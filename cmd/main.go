@@ -129,6 +129,11 @@ func main() {
 	pageGroup.DELETE("/:id", contentController.DeletePage)
 	pageGroup.GET("", contentController.GetAllPages)
 
+	// Обработчик для корневого URL
+	e.GET("/", func(c echo.Context) error {
+		return c.String(http.StatusOK, "Hello, World!")
+	})
+
 	// Статические файлы
 	frontendPath := os.Getenv("FRONTEND_PATH")
 	if frontendPath == "" {
