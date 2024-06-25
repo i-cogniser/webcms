@@ -1,20 +1,72 @@
 package middlewares
 
 import (
-	"github.com/labstack/echo/v4"
+	"fmt"
+	"github.com/golang-jwt/jwt"
 	"net/http"
+	"os"
+	"strings"
+
+	"github.com/labstack/echo/v4"
 )
 
 func AuthMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		// Реализация проверки токена авторизации
-		token := c.Request().Header.Get("Authorization")
-		if token == "" {
+		authHeader := c.Request().Header.Get("Authorization")
+		if authHeader == "" {
 			return c.JSON(http.StatusUnauthorized, "Unauthorized")
 		}
 
-		// Валидация токена...
+		authParts := strings.Split(authHeader, " ")
+		if len(authParts) != 2 || authParts[0] != "Bearer" {
+			return c.JSON(http.StatusUnauthorized, "Unauthorized")
+		}
+
+		tokenString := authParts[1]
+
+		jwtSecret := os.Getenv("JWT_SECRET")
+		if jwtSecret == "" {
+			return c.JSON(http.StatusInternalServerError, "JWT secret not configured")
+		}
+
+		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			}
+			return []byte(jwtSecret), nil
+		})
+
+		if err != nil {
+			return c.JSON(http.StatusUnauthorized, "Unauthorized")
+		}
+
+		if !token.Valid {
+			return c.JSON(http.StatusUnauthorized, "Unauthorized")
+		}
+
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			return c.JSON(http.StatusUnauthorized, "Unauthorized")
+		}
+
+		c.Set("user", claims)
 
 		return next(c)
+	}
+}
+
+func ErrorHandler(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		err := next(c)
+		if err != nil {
+			fmt.Printf("Error occurred: %v\n", err)
+			switch e := err.(type) {
+			case *echo.HTTPError:
+				return c.JSON(e.Code, e.Message)
+			default:
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Internal Server Error"})
+			}
+		}
+		return nil
 	}
 }

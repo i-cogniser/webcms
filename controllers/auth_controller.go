@@ -1,3 +1,4 @@
+// controllers/auth_controller.go
 package controllers
 
 import (
@@ -29,7 +30,8 @@ func (controller *AuthController) Register(c echo.Context) error {
 
 	err := controller.AuthService.Register(*user)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, err)
+		// Возвращаем HTTP-код 500 (внутренняя ошибка сервера) и сообщение об ошибке
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, "User registered successfully")

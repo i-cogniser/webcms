@@ -7,9 +7,12 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"go.uber.org/zap"
+	"net/http"
 	"os"
+	"path/filepath" // добавленный импорт для работы с путями
 	"webcms/cct"
 	"webcms/controllers"
+	"webcms/middlewares" // добавленный импорт для вашего middleware
 	"webcms/models"
 	"webcms/repositories"
 	"webcms/services"
@@ -21,7 +24,9 @@ func main() {
 	defer logger.Sync()
 	sugar := logger.Sugar()
 
-	// Копирование кода проекта в файл output.txt
+	// Полное копирование кода проекта в файл output.txt
+	cct.CcT()
+	// опциональное копирование кода проекта в файл output.txt
 	cct.CopyCode()
 	// Копирование структуры проекта в файл project_structure.md
 	cct.GenTree()
@@ -51,6 +56,7 @@ func main() {
 	db, err := gorm.Open("postgres", dbURL)
 	if err != nil {
 		sugar.Fatalf("Failed to connect database: %v", err)
+		return
 	}
 	defer db.Close()
 
@@ -79,32 +85,45 @@ func main() {
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
+	// Использование вашего middleware для обработки ошибок
+	e.Use(middlewares.ErrorHandler)
+
 	// Маршрут для корневого URL
 	e.GET("/", func(c echo.Context) error {
-		return c.String(200, "Server is running!")
+		return c.String(http.StatusOK, "Server is running!")
 	})
+
+	// Добавление маршрута для статических файлов
+	e.Static("/static", "static")
+
+	// Регистрируем обработчик для favicon.ico
+	e.File("/favicon.ico", filepath.Join("static", "favicon.ico"))
 
 	// Маршруты
 	e.POST("/register", authController.Register)
 	e.POST("/login", authController.Login)
 
-	e.POST("/users", userController.CreateUser)
-	e.GET("/users/:id", userController.GetUserByID)
-	e.PUT("/users/:id", userController.UpdateUser)
-	e.DELETE("/users/:id", userController.DeleteUser)
-	e.GET("/users", userController.GetAllUsers)
+	// Защищенные маршруты
+	userGroup := e.Group("/users", middlewares.AuthMiddleware)
+	userGroup.POST("", userController.CreateUser)
+	userGroup.GET("/:id", userController.GetUserByID)
+	userGroup.PUT("/:id", userController.UpdateUser)
+	userGroup.DELETE("/:id", userController.DeleteUser)
+	userGroup.GET("", userController.GetAllUsers)
 
-	e.POST("/posts", contentController.CreatePost)
-	e.GET("/posts/:id", contentController.GetPostByID)
-	e.PUT("/posts/:id", contentController.UpdatePost)
-	e.DELETE("/posts/:id", contentController.DeletePost)
-	e.GET("/posts", contentController.GetAllPosts)
+	postGroup := e.Group("/posts", middlewares.AuthMiddleware)
+	postGroup.POST("", contentController.CreatePost)
+	postGroup.GET("/:id", contentController.GetPostByID)
+	postGroup.PUT("/:id", contentController.UpdatePost)
+	postGroup.DELETE("/:id", contentController.DeletePost)
+	postGroup.GET("", contentController.GetAllPosts)
 
-	e.POST("/pages", contentController.CreatePage)
-	e.GET("/pages/:id", contentController.GetPageByID)
-	e.PUT("/pages/:id", contentController.UpdatePage)
-	e.DELETE("/pages/:id", contentController.DeletePage)
-	e.GET("/pages", contentController.GetAllPages)
+	pageGroup := e.Group("/pages", middlewares.AuthMiddleware)
+	pageGroup.POST("", contentController.CreatePage)
+	pageGroup.GET("/:id", contentController.GetPageByID)
+	pageGroup.PUT("/:id", contentController.UpdatePage)
+	pageGroup.DELETE("/:id", contentController.DeletePage)
+	pageGroup.GET("", contentController.GetAllPages)
 
 	// Запуск сервера
 	sugar.Infof("Starting server on address: %s", ":8080")

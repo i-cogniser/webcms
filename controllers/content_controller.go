@@ -27,7 +27,7 @@ func (controller *ContentController) CreatePost(c echo.Context) error {
 
 	err := controller.ContentService.CreatePost(*post)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, "Post created successfully")
@@ -55,7 +55,7 @@ func (controller *ContentController) UpdatePost(c echo.Context) error {
 
 	err := controller.ContentService.UpdatePost(*post)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, "Post updated successfully")
@@ -69,7 +69,8 @@ func (controller *ContentController) DeletePost(c echo.Context) error {
 
 	err = controller.ContentService.DeletePost(uint(id))
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, err)
+		// Возвращаем HTTP-код 500 (внутренняя ошибка сервера) и сообщение об ошибке
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, "Post deleted successfully")
@@ -78,7 +79,7 @@ func (controller *ContentController) DeletePost(c echo.Context) error {
 func (controller *ContentController) GetAllPosts(c echo.Context) error {
 	posts, err := controller.ContentService.GetAllPosts()
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, posts)
@@ -94,7 +95,7 @@ func (controller *ContentController) CreatePage(c echo.Context) error {
 
 	err := controller.ContentService.CreatePage(*page)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, "Page created successfully")
@@ -122,7 +123,7 @@ func (controller *ContentController) UpdatePage(c echo.Context) error {
 
 	err := controller.ContentService.UpdatePage(*page)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, "Page updated successfully")
@@ -136,7 +137,7 @@ func (controller *ContentController) DeletePage(c echo.Context) error {
 
 	err = controller.ContentService.DeletePage(uint(id))
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, "Page deleted successfully")
@@ -145,7 +146,7 @@ func (controller *ContentController) DeletePage(c echo.Context) error {
 func (controller *ContentController) GetAllPages(c echo.Context) error {
 	pages, err := controller.ContentService.GetAllPages()
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, pages)
