@@ -1,12 +1,12 @@
-// controllers/auth_controller.go
 package controllers
 
 import (
-	"github.com/go-playground/validator/v10"
-	"github.com/labstack/echo/v4"
 	"net/http"
 	"webcms/models"
 	"webcms/services"
+
+	"github.com/go-playground/validator/v10"
+	"github.com/labstack/echo/v4"
 )
 
 type AuthController struct {
@@ -30,7 +30,6 @@ func (controller *AuthController) Register(c echo.Context) error {
 
 	err := controller.AuthService.Register(*user)
 	if err != nil {
-		// Возвращаем HTTP-код 500 (внутренняя ошибка сервера) и сообщение об ошибке
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
@@ -52,5 +51,13 @@ func (controller *AuthController) Login(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, err)
 	}
 
-	return c.JSON(http.StatusOK, user)
+	token, err := controller.AuthService.GenerateJWT(user)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"user":  user,
+		"token": token,
+	})
 }

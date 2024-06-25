@@ -87,7 +87,7 @@ func CopyCode() {
 	}
 
 	// Создаем или перезаписываем файл output.txt в корне проекта
-	outputFilePath := "output.txt"
+	outputFilePath := "partcode.txt"
 	outputFile, err := os.Create(outputFilePath)
 	if err != nil {
 		fmt.Println("Ошибка создания выходного файла:", err)

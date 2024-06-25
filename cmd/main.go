@@ -1,35 +1,39 @@
 package main
 
 import (
+	"html/template"
+	"net/http"
+	"os"
+	"path/filepath"
+	"time"
+	"webcms/cct"
+	"webcms/controllers"
+	"webcms/middlewares"
+	"webcms/models"
+	"webcms/rendering"
+	"webcms/repositories"
+	"webcms/services"
+
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/postgres"
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"go.uber.org/zap"
-	"net/http"
-	"os"
-	"path/filepath" // добавленный импорт для работы с путями
-	"webcms/cct"
-	"webcms/controllers"
-	"webcms/middlewares" // добавленный импорт для вашего middleware
-	"webcms/models"
-	"webcms/repositories"
-	"webcms/services"
 )
 
 func main() {
-	// Инициализация логгера
-	logger, _ := zap.NewProduction()
-	defer logger.Sync()
-	sugar := logger.Sugar()
-
 	// Полное копирование кода проекта в файл output.txt
 	cct.CcT()
 	// опциональное копирование кода проекта в файл output.txt
 	cct.CopyCode()
 	// Копирование структуры проекта в файл project_structure.md
 	cct.GenTree()
+	// Инициализация логгера
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
+	sugar := logger.Sugar()
+
 	// Загрузка переменных окружения из .env файла
 	if err := godotenv.Load(); err != nil {
 		sugar.Fatalf("Error loading .env file: %v", err)
@@ -61,15 +65,16 @@ func main() {
 	defer db.Close()
 
 	// Автоматическая миграция моделей
-	db.AutoMigrate(&models.User{}, &models.Post{}, &models.Page{})
+	db.AutoMigrate(&models.User{}, &models.Post{}, &models.Page{}, &models.Token{})
 
 	// Инициализация репозиториев
 	userRepository := repositories.NewUserRepository(db)
 	postRepository := repositories.NewPostRepository(db)
 	pageRepository := repositories.NewPageRepository(db)
+	tokenRepository := repositories.NewTokenRepository(db)
 
 	// Инициализация сервисов
-	authService := services.NewAuthService(userRepository)
+	authService := services.NewAuthService(userRepository, tokenRepository)
 	userService := services.NewUserService(userRepository)
 	contentService := services.NewContentService(postRepository, pageRepository)
 
@@ -85,47 +90,68 @@ func main() {
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
-	// Использование вашего middleware для обработки ошибок
-	e.Use(middlewares.ErrorHandler)
+	// Использование CORS middleware
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins: []string{"http://localhost:8080", "http://localhost:8081"},
+		AllowMethods: []string{http.MethodGet, http.MethodPut, http.MethodPost, http.MethodDelete},
+	}))
 
-	// Маршрут для корневого URL
-	e.GET("/", func(c echo.Context) error {
-		return c.String(http.StatusOK, "Server is running!")
-	})
+	// Настройка структуры для рендеринга HTML шаблонов
+	renderer := &rendering.TemplateRenderer{
+		Templates: template.Must(template.ParseGlob(filepath.Join("templates", "*.html"))),
+	}
+	e.Renderer = renderer
 
-	// Добавление маршрута для статических файлов
-	e.Static("/static", "static")
-
-	// Регистрируем обработчик для favicon.ico
-	e.File("/favicon.ico", filepath.Join("static", "favicon.ico"))
-
-	// Маршруты
-	e.POST("/register", authController.Register)
-	e.POST("/login", authController.Login)
+	// Применение middleware для проверки токена на защищенных маршрутах
+	// Routes
+	e.POST("/api/register", authController.Register)
+	e.POST("/api/login", authController.Login)
 
 	// Защищенные маршруты
-	userGroup := e.Group("/users", middlewares.AuthMiddleware)
+	userGroup := e.Group("/users", middlewares.JWTMiddleware(authService))
 	userGroup.POST("", userController.CreateUser)
 	userGroup.GET("/:id", userController.GetUserByID)
 	userGroup.PUT("/:id", userController.UpdateUser)
 	userGroup.DELETE("/:id", userController.DeleteUser)
 	userGroup.GET("", userController.GetAllUsers)
 
-	postGroup := e.Group("/posts", middlewares.AuthMiddleware)
+	postGroup := e.Group("/posts", middlewares.JWTMiddleware(authService))
 	postGroup.POST("", contentController.CreatePost)
 	postGroup.GET("/:id", contentController.GetPostByID)
 	postGroup.PUT("/:id", contentController.UpdatePost)
 	postGroup.DELETE("/:id", contentController.DeletePost)
 	postGroup.GET("", contentController.GetAllPosts)
 
-	pageGroup := e.Group("/pages", middlewares.AuthMiddleware)
+	pageGroup := e.Group("/pages", middlewares.JWTMiddleware(authService))
 	pageGroup.POST("", contentController.CreatePage)
 	pageGroup.GET("/:id", contentController.GetPageByID)
 	pageGroup.PUT("/:id", contentController.UpdatePage)
 	pageGroup.DELETE("/:id", contentController.DeletePage)
 	pageGroup.GET("", contentController.GetAllPages)
 
+	// Статические файлы
+	frontendPath := os.Getenv("FRONTEND_PATH")
+	if frontendPath == "" {
+		frontendPath = "web"
+	}
+
+	absFrontendPath, err := filepath.Abs(frontendPath)
+	if err != nil {
+		sugar.Fatalf("Failed to get absolute path for frontend: %v", err)
+	}
+	e.Static("/", absFrontendPath)
+
+	// Периодическая проверка и удаление устаревших токенов
+	go func() {
+		for {
+			err := tokenRepository.DeleteExpiredTokens()
+			if err != nil {
+				sugar.Errorf("Failed to delete expired tokens: %v", err)
+			}
+			time.Sleep(1 * time.Hour)
+		}
+	}()
+
 	// Запуск сервера
-	sugar.Infof("Starting server on address: %s", ":8080")
 	e.Logger.Fatal(e.Start(":8080"))
 }
