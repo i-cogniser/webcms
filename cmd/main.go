@@ -1,12 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"html/template"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"time"
-	"webcms/cct"
 	"webcms/controllers"
 	"webcms/middlewares"
 	"webcms/models"
@@ -23,21 +24,21 @@ import (
 )
 
 func main() {
-	// Полное копирование кода проекта в файл output.txt
-	cct.CcT()
-	// опциональное копирование кода проекта в файл output.txt
-	cct.CopyCode()
-	// Копирование структуры проекта в файл project_structure.md
-	cct.GenTree()
+
 	// Инициализация логгера
-	logger, _ := zap.NewProduction()
+	logger, err := zap.NewProduction()
+	if err != nil {
+		log.Fatalf("Failed to initialize logger: %v", err)
+	}
 	defer logger.Sync()
 	sugar := logger.Sugar()
+	fmt.Println("Checkpoint 1: Logger initialized")
 
 	// Загрузка переменных окружения из .env файла
 	if err := godotenv.Load(); err != nil {
 		sugar.Fatalf("Error loading .env file: %v", err)
 	}
+	fmt.Println("Checkpoint 2: Env loaded")
 
 	// Формирование DATABASE_URL
 	dbURL := os.Getenv("DATABASE_URL")
@@ -52,6 +53,7 @@ func main() {
 
 		dbURL = "postgres://" + dbUser + ":" + dbPassword + "@" + dbHost + ":" + dbPort + "/" + dbName
 	}
+	fmt.Println("Checkpoint 3: DB URL formed")
 
 	// Логирование URL базы данных
 	sugar.Infof("Connecting to database: %s", dbURL)
@@ -64,6 +66,8 @@ func main() {
 	}
 	defer db.Close()
 
+	fmt.Println("Checkpoint 4: DB connected")
+
 	// Автоматическая миграция моделей
 	db.AutoMigrate(&models.User{}, &models.Post{}, &models.Page{}, &models.Token{})
 
@@ -74,13 +78,13 @@ func main() {
 	tokenRepository := repositories.NewTokenRepository(db)
 
 	// Инициализация сервисов
-	authService := services.NewAuthService(userRepository, tokenRepository)
-	userService := services.NewUserService(userRepository)
-	contentService := services.NewContentService(postRepository, pageRepository)
+	authService := services.NewAuthService(userRepository, tokenRepository, db)
+	userService := services.NewUserService(userRepository, db)
+	contentService := services.NewContentService(postRepository, pageRepository, db)
 
 	// Инициализация контроллеров
 	authController := controllers.NewAuthController(authService)
-	userController := controllers.NewUserController(userService)
+	userController := controllers.NewUserController(userService, authService)
 	contentController := controllers.NewContentController(contentService)
 
 	// Инициализация Echo
@@ -137,7 +141,7 @@ func main() {
 	// Статические файлы
 	frontendPath := os.Getenv("FRONTEND_PATH")
 	if frontendPath == "" {
-		frontendPath = "web"
+		frontendPath = "static"
 	}
 
 	absFrontendPath, err := filepath.Abs(frontendPath)

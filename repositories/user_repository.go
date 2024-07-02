@@ -7,10 +7,13 @@ import (
 
 type UserRepository interface {
 	CreateUser(user models.User) error
+	CreateUserWithTx(user models.User, tx *gorm.DB) error // Подтверждение наличия метода CreateUserWithTx
 	GetUserByID(id uint) (models.User, error)
 	GetUserByEmail(email string) (models.User, error)
 	UpdateUser(user models.User) error
+	UpdateUserWithTx(user models.User, tx *gorm.DB) error
 	DeleteUser(id uint) error
+	DeleteUserWithTx(id uint, tx *gorm.DB) error
 	GetAllUsers() ([]models.User, error)
 }
 
@@ -25,6 +28,12 @@ func NewUserRepository(db *gorm.DB) UserRepository {
 func (r *userRepository) CreateUser(user models.User) error {
 	return r.db.Create(&user).Error
 }
+
+func (r *userRepository) CreateUserWithTx(user models.User, tx *gorm.DB) error {
+	return tx.Create(&user).Error
+}
+
+// Остальные методы UserRepository остаются без изменений
 
 func (r *userRepository) GetUserByID(id uint) (models.User, error) {
 	var user models.User
@@ -42,8 +51,16 @@ func (r *userRepository) UpdateUser(user models.User) error {
 	return r.db.Save(&user).Error
 }
 
+func (r *userRepository) UpdateUserWithTx(user models.User, tx *gorm.DB) error {
+	return tx.Save(&user).Error
+}
+
 func (r *userRepository) DeleteUser(id uint) error {
 	return r.db.Where("id = ?", id).Delete(&models.User{}).Error
+}
+
+func (r *userRepository) DeleteUserWithTx(id uint, tx *gorm.DB) error {
+	return tx.Where("id = ?", id).Delete(&models.User{}).Error
 }
 
 func (r *userRepository) GetAllUsers() ([]models.User, error) {

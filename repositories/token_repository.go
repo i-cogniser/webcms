@@ -9,6 +9,7 @@ import (
 
 type TokenRepository interface {
 	SaveToken(token models.Token) error
+	SaveTokenWithTx(token models.Token, tx *gorm.DB) error
 	GetToken(tokenString string) (*models.Token, error)
 	DeleteToken(tokenString string) error
 	DeleteExpiredTokens() error
@@ -24,6 +25,10 @@ func NewTokenRepository(db *gorm.DB) TokenRepository {
 
 func (r *tokenRepository) SaveToken(token models.Token) error {
 	return r.db.Create(&token).Error
+}
+
+func (r *tokenRepository) SaveTokenWithTx(token models.Token, tx *gorm.DB) error {
+	return tx.Create(&token).Error
 }
 
 func (r *tokenRepository) GetToken(tokenString string) (*models.Token, error) {

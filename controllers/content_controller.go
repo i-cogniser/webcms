@@ -1,4 +1,3 @@
-// controllers/content_controller.go
 package controllers
 
 import (
