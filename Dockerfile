@@ -1,5 +1,6 @@
 # Этап 1: Сборка приложения
 FROM golang:1.22-alpine3.18 AS builder
+
 # Установка необходимых утилит
 RUN apk update && \
     apk add --no-cache git
@@ -14,14 +15,8 @@ RUN go mod download
 # Копирование остального кода приложения в рабочую директорию
 COPY . .
 
-# Проверка наличия cmd/main.go и других исходных файлов
-RUN ls -la ./cmd/main.go
-
 # Компиляция приложения
 RUN go build -o /app/main ./cmd/main.go
-
-# Проверка, что файл main был скомпилирован успешно
-RUN if [ ! -f /app/main ]; then echo "Compilation failed"; exit 1; fi
 
 # Этап 2: Запуск приложения
 FROM alpine:3.18
