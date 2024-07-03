@@ -1,12 +1,19 @@
-import {defineConfig} from 'vite'
-import vue from '@vitejs/plugin-vue'
+import { defineConfig } from 'vite';
+import vue from '@vitejs/plugin-vue';
 
-// https://vitejs.dev/config/
 export default defineConfig({
     plugins: [vue()],
-    server: {
-        proxy: {
-            '/api': 'http://localhost:8080',
+    build: {
+        outDir: 'dist',
+    },
+    resolve: {
+        alias: {
+            '@': '/src',
         },
     },
-})
+    server: {
+        proxy: {
+            '/api': 'http://web:8080', // измените localhost на web для связи с вашим бэкендом
+        },
+    },
+});

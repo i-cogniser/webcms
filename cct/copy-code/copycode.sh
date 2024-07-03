@@ -94,48 +94,48 @@ if [ ${#not_found_files[@]} -gt 0 ]; then
 fi
 
 # Функция для вывода структуры проекта
-print_tree() {
-    local directory="$1"
-    local prefix="$2"
-    local exclude_dirs=(".git" ".idea")
-
-    for exclude in "${exclude_dirs[@]}"; do
-        if [[ "$(basename "$directory")" == "$exclude" ]]; then
-            return
-        fi
-    done
-
-    local items=("$directory"/*)
-    local total=${#items[@]}
-    local count=0
-
-    for item in "${items[@]}"; do
-        ((count++))
-        local branch_prefix="$prefix"
-        local item_name=$(basename "$item")
-
-        if [ "$count" -eq "$total" ]; then
-            branch_prefix+="└── "
-            new_prefix="$prefix    "
-        else
-            branch_prefix+="├── "
-            new_prefix="$prefix│   "
-        fi
-
-        if [ -d "$item" ]; then
-            echo "${branch_prefix}${item_name}" >> "$output_file"
-            print_tree "$item" "$new_prefix"
-        else
-            echo "${branch_prefix}${item_name}" >> "$output_file"
-        fi
-    done
-}
+#print_tree() {
+#    local directory="$1"
+#    local prefix="$2"
+#    local exclude_dirs=(".git" ".idea")
+#
+#    for exclude in "${exclude_dirs[@]}"; do
+#        if [[ "$(basename "$directory")" == "$exclude" ]]; then
+#            return
+#        fi
+#    done
+#
+#    local items=("$directory"/*)
+#    local total=${#items[@]}
+#    local count=0
+#
+#    for item in "${items[@]}"; do
+#        ((count++))
+#        local branch_prefix="$prefix"
+#        local item_name=$(basename "$item")
+#
+#        if [ "$count" -eq "$total" ]; then
+#            branch_prefix+="└── "
+#            new_prefix="$prefix    "
+#        else
+#            branch_prefix+="├── "
+#            new_prefix="$prefix│   "
+#        fi
+#
+#        if [ -d "$item" ]; then
+#            echo "${branch_prefix}${item_name}" >> "$output_file"
+#            print_tree "$item" "$new_prefix"
+#        else
+#            echo "${branch_prefix}${item_name}" >> "$output_file"
+#        fi
+#    done
+#}
 
 # Выводим структуру проекта
-log "Шаг 3: Cоздание структуры проекта"
-echo "=============================================================" >> "$output_file"
-echo "Структура проекта:" >> "$output_file"
-echo "${project_name}" >> "$output_file"
-print_tree "${project_root}" ""
+#log "Шаг 3: Cоздание структуры проекта"
+#echo "=============================================================" >> "$output_file"
+#echo "Структура проекта:" >> "$output_file"
+#echo "${project_name}" >> "$output_file"
+#print_tree "${project_root}" ""
 
 log "Шаг 4: Информация успешно записана в файл out.txt"

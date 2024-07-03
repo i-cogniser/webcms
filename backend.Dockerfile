@@ -2,8 +2,7 @@
 FROM golang:1.22-alpine3.18 AS builder
 
 # Установка необходимых утилит
-RUN apk update && \
-    apk add --no-cache git
+RUN apk update && apk add --no-cache git
 
 # Создание рабочей директории
 WORKDIR /app
@@ -22,16 +21,7 @@ RUN go build -o /app/main ./cmd/main.go
 FROM alpine:3.18
 
 # Установка необходимых утилит
-RUN apk update && \
-    apk add --no-cache libgcc libc6-compat \
-    # Установка curl для проверки состояния
-    && apk add --no-cache curl \
-    # Установка tar для распаковки
-    && apk add --no-cache tar \
-    # Установка netcat для проверки состояния
-    && apk add --no-cache netcat-openbsd \
-    # Установка оболочки ash для проверки состояния
-    && apk add --no-cache bash
+RUN apk update && apk add --no-cache libgcc libc6-compat curl tar netcat-openbsd bash
 
 # Создание рабочей директории
 WORKDIR /app
