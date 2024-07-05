@@ -14,7 +14,7 @@ type AuthController struct {
 }
 
 func NewAuthController(authService services.AuthService) *AuthController {
-	return &AuthController{authService}
+	return &AuthController{AuthService: authService}
 }
 
 func (controller *AuthController) Register(c echo.Context) error {
@@ -38,17 +38,22 @@ func (controller *AuthController) Register(c echo.Context) error {
 
 func (controller *AuthController) Login(c echo.Context) error {
 	var input struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		Email    string `json:"email" validate:"required,email"`
+		Password string `json:"password" validate:"required"`
 	}
 
 	if err := c.Bind(&input); err != nil {
 		return c.JSON(http.StatusBadRequest, err)
 	}
 
+	validate := validator.New()
+	if err := validate.Struct(&input); err != nil {
+		return c.JSON(http.StatusBadRequest, err.Error())
+	}
+
 	user, err := controller.AuthService.Login(input.Email, input.Password)
 	if err != nil {
-		return c.JSON(http.StatusUnauthorized, err)
+		return c.JSON(http.StatusUnauthorized, err.Error())
 	}
 
 	token, err := controller.AuthService.GenerateJWT(user)
@@ -60,4 +65,28 @@ func (controller *AuthController) Login(c echo.Context) error {
 		"user":  user,
 		"token": token,
 	})
+}
+
+func (controller *AuthController) RefreshToken(c echo.Context) error {
+	currentToken := c.Request().Header.Get("Authorization")
+	if currentToken == "" {
+		return c.JSON(http.StatusUnauthorized, "No token provided")
+	}
+
+	newToken, err := controller.AuthService.RefreshToken(currentToken)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, err.Error())
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"token": newToken})
+}
+
+func (controller *AuthController) RevokeToken(c echo.Context) error {
+	tokenID := c.Param("id")
+	err := controller.AuthService.RevokeToken(tokenID)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, err.Error())
+	}
+
+	return c.NoContent(http.StatusOK)
 }

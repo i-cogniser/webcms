@@ -16,7 +16,7 @@ import (
 	"webcms/services"
 
 	"github.com/jinzhu/gorm"
-	_ "github.com/jinzhu/gorm/dialects/postgres"
+	_ "github.com/jinzhu/gorm/dialects/postgres" // Используем текущую версию GORM
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -24,7 +24,6 @@ import (
 )
 
 func main() {
-
 	// Инициализация логгера
 	logger, err := zap.NewProduction()
 	if err != nil {
@@ -42,8 +41,6 @@ func main() {
 
 	// Формирование DATABASE_URL
 	dbURL := os.Getenv("DATABASE_URL")
-
-	// Если DATABASE_URL не установлен в .env, собираем его из отдельных переменных
 	if dbURL == "" {
 		dbHost := os.Getenv("DB_HOST")
 		dbPort := os.Getenv("DB_PORT")
@@ -51,7 +48,7 @@ func main() {
 		dbPassword := os.Getenv("DB_PASSWORD")
 		dbName := os.Getenv("DB_NAME")
 
-		dbURL = "postgres://" + dbUser + ":" + dbPassword + "@" + dbHost + ":" + dbPort + "/" + dbName
+		dbURL = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", dbUser, dbPassword, dbHost, dbPort, dbName)
 	}
 	fmt.Println("Checkpoint 3: DB URL formed")
 
@@ -107,11 +104,14 @@ func main() {
 	e.Renderer = renderer
 
 	// Применение middleware для проверки токена на защищенных маршрутах
-	// Routes
+
+	// Роуты для аутентификации
 	e.POST("/api/register", authController.Register)
 	e.POST("/api/login", authController.Login)
+	e.POST("/api/refresh-token", authController.RefreshToken)   // Обновление токена
+	e.POST("/api/revoke-token/:id", authController.RevokeToken) // Отзыв токена
 
-	// Защищенные маршруты
+	// Защищенные маршруты для пользователей
 	userGroup := e.Group("/users", middlewares.JWTMiddleware(authService))
 	userGroup.POST("", userController.CreateUser)
 	userGroup.GET("/:id", userController.GetUserByID)
@@ -119,6 +119,7 @@ func main() {
 	userGroup.DELETE("/:id", userController.DeleteUser)
 	userGroup.GET("", userController.GetAllUsers)
 
+	// Защищенные маршруты для постов
 	postGroup := e.Group("/posts", middlewares.JWTMiddleware(authService))
 	postGroup.POST("", contentController.CreatePost)
 	postGroup.GET("/:id", contentController.GetPostByID)
@@ -126,12 +127,43 @@ func main() {
 	postGroup.DELETE("/:id", contentController.DeletePost)
 	postGroup.GET("", contentController.GetAllPosts)
 
+	// Защищенные маршруты для страниц
 	pageGroup := e.Group("/pages", middlewares.JWTMiddleware(authService))
 	pageGroup.POST("", contentController.CreatePage)
 	pageGroup.GET("/:id", contentController.GetPageByID)
 	pageGroup.PUT("/:id", contentController.UpdatePage)
 	pageGroup.DELETE("/:id", contentController.DeletePage)
 	pageGroup.GET("", contentController.GetAllPages)
+
+	// Роуты для статистики
+	e.GET("/api/users/count", func(c echo.Context) error {
+		count, err := userRepository.Count()
+		if err != nil {
+			return err
+		}
+		return c.JSON(http.StatusOK, map[string]int{"count": count})
+	})
+
+	e.GET("/api/pages/count", func(c echo.Context) error {
+		count, err := pageRepository.Count()
+		if err != nil {
+			return err
+		}
+		return c.JSON(http.StatusOK, map[string]int{"count": count})
+	})
+
+	e.GET("/api/posts/count", func(c echo.Context) error {
+		count, err := postRepository.Count()
+		if err != nil {
+			return err
+		}
+		return c.JSON(http.StatusOK, map[string]int{"count": count})
+	})
+
+	// Роуты для управления токенами
+	tokenGroup := e.Group("/tokens", middlewares.JWTMiddleware(authService))
+	tokenGroup.GET("/refresh", authController.RefreshToken) // Обновление токена
+	tokenGroup.DELETE("/:id", authController.RevokeToken)   // Отзыв токена
 
 	// Обработчик для корневого URL
 	e.GET("/", func(c echo.Context) error {

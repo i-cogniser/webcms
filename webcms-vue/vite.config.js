@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
+import path from 'path';
 
 export default defineConfig({
     plugins: [vue()],
@@ -8,12 +9,12 @@ export default defineConfig({
     },
     resolve: {
         alias: {
-            '@': '/src',
+            '@': path.resolve(__dirname, 'src'),
         },
     },
     server: {
         proxy: {
-            '/api': 'http://web:8080', // измените localhost на web для связи с вашим бэкендом
+            '/api': 'http://web:8080',
         },
     },
 });

@@ -15,6 +15,7 @@ type PostRepository interface {
 	DeletePost(id uint) error
 	DeletePostWithTx(id uint, tx *gorm.DB) error
 	GetAllPosts() ([]models.Post, error)
+	Count() (int, error)
 }
 
 type postRepository struct {
@@ -22,7 +23,7 @@ type postRepository struct {
 }
 
 func NewPostRepository(db *gorm.DB) PostRepository {
-	return &postRepository{db}
+	return &postRepository{db: db}
 }
 
 func (r *postRepository) CreatePost(post models.Post) error {
@@ -59,4 +60,10 @@ func (r *postRepository) GetAllPosts() ([]models.Post, error) {
 	var posts []models.Post
 	err := r.db.Find(&posts).Error
 	return posts, err
+}
+
+func (r *postRepository) Count() (int, error) {
+	var count int
+	err := r.db.Model(&models.Post{}).Count(&count).Error
+	return count, err
 }

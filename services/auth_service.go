@@ -18,6 +18,8 @@ type AuthService interface {
 	Login(email, password string) (*models.User, error)
 	GenerateJWT(user *models.User) (string, error)
 	GenerateJWTWithTx(user *models.User, tx *gorm.DB) (string, error)
+	RefreshToken(tokenString string) (string, error)
+	RevokeToken(tokenID string) error
 }
 
 type authService struct {
@@ -27,7 +29,7 @@ type authService struct {
 }
 
 func NewAuthService(userRepo repositories.UserRepository, tokenRepo repositories.TokenRepository, db *gorm.DB) AuthService {
-	return &authService{userRepo, tokenRepo, db}
+	return &authService{userRepo: userRepo, tokenRepo: tokenRepo, db: db}
 }
 
 func (s *authService) Register(user models.User) error {
@@ -116,4 +118,22 @@ func (s *authService) GenerateJWTWithTx(user *models.User, tx *gorm.DB) (string,
 	}
 
 	return tokenString, nil
+}
+
+func (s *authService) RefreshToken(tokenString string) (string, error) {
+	token, err := s.tokenRepo.GetToken(tokenString)
+	if err != nil || token.ExpiresAt.Before(time.Now()) {
+		return "", errors.New("invalid or expired token")
+	}
+
+	user, err := s.userRepo.GetUserByID(token.UserID)
+	if err != nil {
+		return "", err
+	}
+
+	return s.GenerateJWT(&user)
+}
+
+func (s *authService) RevokeToken(tokenID string) error {
+	return s.tokenRepo.DeleteToken(tokenID)
 }

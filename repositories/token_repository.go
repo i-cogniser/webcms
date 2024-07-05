@@ -20,7 +20,7 @@ type tokenRepository struct {
 }
 
 func NewTokenRepository(db *gorm.DB) TokenRepository {
-	return &tokenRepository{db}
+	return &tokenRepository{db: db}
 }
 
 func (r *tokenRepository) SaveToken(token models.Token) error {

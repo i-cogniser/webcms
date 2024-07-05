@@ -15,6 +15,7 @@ type UserRepository interface {
 	DeleteUser(id uint) error
 	DeleteUserWithTx(id uint, tx *gorm.DB) error
 	GetAllUsers() ([]models.User, error)
+	Count() (int, error) // Добавлен новый метод для подсчета количества пользователей
 }
 
 type userRepository struct {
@@ -67,4 +68,13 @@ func (r *userRepository) GetAllUsers() ([]models.User, error) {
 	var users []models.User
 	err := r.db.Find(&users).Error
 	return users, err
+}
+
+// Новый метод для подсчета количества пользователей
+func (r *userRepository) Count() (int, error) {
+	var count int
+	if err := r.db.Model(&models.User{}).Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
 }

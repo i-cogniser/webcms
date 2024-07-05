@@ -1,5 +1,5 @@
 <script setup>
-import HelloWorld from './components/HelloWorld.vue'
+import { RouterView } from 'vue-router'
 </script>
 
 <template>
@@ -11,10 +11,20 @@ import HelloWorld from './components/HelloWorld.vue'
       <img src="./assets/vue.svg" class="logo vue" alt="Vue logo"/>
     </a>
   </div>
-  <HelloWorld msg="Vite + Vue"/>
+  <RouterView />
 </template>
 
 <style scoped>
+header {
+  background-color: #f8f9fa;
+  padding: 1em;
+}
+
+nav {
+  display: flex;
+  gap: 1em;
+}
+
 .logo {
   height: 6em;
   padding: 1.5em;

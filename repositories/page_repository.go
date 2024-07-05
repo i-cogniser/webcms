@@ -15,6 +15,7 @@ type PageRepository interface {
 	DeletePage(id uint) error
 	DeletePageWithTx(id uint, tx *gorm.DB) error
 	GetAllPages() ([]models.Page, error)
+	Count() (int, error)
 }
 
 type pageRepository struct {
@@ -22,7 +23,7 @@ type pageRepository struct {
 }
 
 func NewPageRepository(db *gorm.DB) PageRepository {
-	return &pageRepository{db}
+	return &pageRepository{db: db}
 }
 
 func (r *pageRepository) CreatePage(page models.Page) error {
@@ -59,4 +60,10 @@ func (r *pageRepository) GetAllPages() ([]models.Page, error) {
 	var pages []models.Page
 	err := r.db.Find(&pages).Error
 	return pages, err
+}
+
+func (r *pageRepository) Count() (int, error) {
+	var count int
+	err := r.db.Model(&models.Page{}).Count(&count).Error
+	return count, err
 }
