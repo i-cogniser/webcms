@@ -1,32 +1,32 @@
 <template>
   <div>
-    <h1>Admin Dashboard</h1>
+    <h1>Панель Администратора</h1>
     <b-container>
       <b-row>
         <b-col md="4">
-          <b-card title="Users" class="mb-4">
+          <b-card title="Пользователи" class="mb-4">
             <b-card-text>
-              <p>Total Users: {{ userCount }}</p>
-              <p>Manage users of the system.</p>
-              <b-button @click="goToUsers" variant="primary">View Users</b-button>
+              <p>Всего пользователей: {{ userCount }}</p>
+              <p>Управление пользователями системы.</p>
+              <b-button @click="goToUsers" variant="primary">Перейти к пользователям</b-button>
             </b-card-text>
           </b-card>
         </b-col>
         <b-col md="4">
-          <b-card title="Pages" class="mb-4">
+          <b-card title="Страницы" class="mb-4">
             <b-card-text>
-              <p>Total Pages: {{ pageCount }}</p>
-              <p>Manage the pages of the website.</p>
-              <b-button @click="goToPages" variant="primary">View Pages</b-button>
+              <p>Всего страниц: {{ pageCount }}</p>
+              <p>Управление страницами веб-сайта.</p>
+              <b-button @click="goToPages" variant="primary">Перейти к страницам</b-button>
             </b-card-text>
           </b-card>
         </b-col>
         <b-col md="4">
-          <b-card title="Posts" class="mb-4">
+          <b-card title="Записи" class="mb-4">
             <b-card-text>
-              <p>Total Posts: {{ postCount }}</p>
-              <p>Manage the blog posts.</p>
-              <b-button @click="goToPosts" variant="primary">View Posts</b-button>
+              <p>Всего записей: {{ postCount }}</p>
+              <p>Управление записями блога.</p>
+              <b-button @click="goToPosts" variant="primary">Перейти к записям</b-button>
             </b-card-text>
           </b-card>
         </b-col>
@@ -67,7 +67,7 @@ onMounted(async () => {
     const postResponse = await axios.get('/api/posts/count')
     postCount.value = postResponse.data.count
   } catch (error) {
-    console.error('Failed to fetch counts:', error)
+    console.error('Не удалось получить данные:', error)
   }
 })
 </script>

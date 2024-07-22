@@ -1,16 +1,46 @@
-import { createStore } from 'vuex'
+import {createStore} from 'vuex'
 
 export default createStore({
     state: {
-        // Здесь определите начальное состояние вашего приложения
+        user: null, // начальное состояние для пользователя
+        settings: {}, // начальное состояние для настроек
+        items: [] // начальное состояние для списка элементов
     },
     mutations: {
-        // Здесь определите мутации для изменения состояния
+        setUser(state, user) {
+            state.user = user;
+        },
+        setSettings(state, settings) {
+            state.settings = settings;
+        },
+        addItem(state, item) {
+            state.items.push(item);
+        }
     },
     actions: {
-        // Здесь определите действия для асинхронных операций
+        fetchUser({commit}) {
+            // Имитация запроса к API
+            const user = {name: 'John Doe', email: 'john@example.com'};
+            commit('setUser', user);
+        },
+        fetchSettings({commit}) {
+            // Имитация запроса к API
+            const settings = {theme: 'dark'};
+            commit('setSettings', settings);
+        },
+        async fetchItems({commit}) {
+            // Имитация асинхронного запроса к API
+            const items = await new Promise(resolve => {
+                setTimeout(() => {
+                    resolve([{name: 'Item 1'}, {name: 'Item 2'}]);
+                }, 1000);
+            });
+            items.forEach(item => {
+                commit('addItem', item);
+            });
+        }
     },
     modules: {
-        // Здесь определите модули, если они у вас есть
+        // Здесь можно определить модули, если они у вас есть
     }
 })

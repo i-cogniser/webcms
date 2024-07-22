@@ -36,6 +36,8 @@ func main() {
 	// Загрузка переменных окружения из .env файла
 	if err := godotenv.Load(); err != nil {
 		sugar.Fatalf("Error loading .env file: %v", err)
+	} else {
+		sugar.Infof(".env file loaded successfully")
 	}
 	fmt.Println("Checkpoint 2: Env loaded")
 
@@ -60,13 +62,19 @@ func main() {
 	if err != nil {
 		sugar.Fatalf("Failed to connect database: %v", err)
 		return
+	} else {
+		sugar.Infof("Database connected successfully")
 	}
 	defer db.Close()
 
 	fmt.Println("Checkpoint 4: DB connected")
 
 	// Автоматическая миграция моделей
-	db.AutoMigrate(&models.User{}, &models.Post{}, &models.Page{}, &models.Token{})
+	if err := db.AutoMigrate(&models.User{}, &models.Post{}, &models.Page{}, &models.Token{}).Error; err != nil {
+		sugar.Fatalf("Failed to migrate database: %v", err)
+	} else {
+		sugar.Infof("Database migrated successfully")
+	}
 
 	// Инициализация репозиториев
 	userRepository := repositories.NewUserRepository(db)
@@ -93,7 +101,7 @@ func main() {
 
 	// Использование CORS middleware
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: []string{"http://localhost:8080", "http://localhost:8081"},
+		AllowOrigins: []string{"http://localhost", "http://localhost:80", "http://localhost:8080", "http://localhost:8081"},
 		AllowMethods: []string{http.MethodGet, http.MethodPut, http.MethodPost, http.MethodDelete},
 	}))
 
@@ -139,7 +147,8 @@ func main() {
 	e.GET("/api/users/count", func(c echo.Context) error {
 		count, err := userRepository.Count()
 		if err != nil {
-			return err
+			sugar.Errorf("Failed to get users count: %v", err)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get users count"})
 		}
 		return c.JSON(http.StatusOK, map[string]int{"count": count})
 	})
@@ -147,7 +156,9 @@ func main() {
 	e.GET("/api/pages/count", func(c echo.Context) error {
 		count, err := pageRepository.Count()
 		if err != nil {
-			return err
+			sugar.Errorf("Failed to get pages count: %v", err)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get users count"})
+
 		}
 		return c.JSON(http.StatusOK, map[string]int{"count": count})
 	})
@@ -155,9 +166,15 @@ func main() {
 	e.GET("/api/posts/count", func(c echo.Context) error {
 		count, err := postRepository.Count()
 		if err != nil {
-			return err
+			sugar.Errorf("Failed to get posts count: %v", err)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get users count"})
+
 		}
 		return c.JSON(http.StatusOK, map[string]int{"count": count})
+	})
+
+	e.GET("/api/health", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{"message": "OK"})
 	})
 
 	// Роуты для управления токенами
@@ -185,9 +202,12 @@ func main() {
 	// Периодическая проверка и удаление устаревших токенов
 	go func() {
 		for {
+			sugar.Infof("Starting token cleanup process")
 			err := tokenRepository.DeleteExpiredTokens()
 			if err != nil {
 				sugar.Errorf("Failed to delete expired tokens: %v", err)
+			} else {
+				sugar.Infof("Expired tokens deleted successfully")
 			}
 			time.Sleep(1 * time.Hour)
 		}

@@ -14,7 +14,12 @@ export default defineConfig({
     },
     server: {
         proxy: {
-            '/api': 'http://web:8080',
+            '/api': {
+                target: 'http://web:8080',  // Внутренний адрес Docker Compose
+                changeOrigin: true,
+                secure: false,
+                rewrite: path => path.replace(/^\/api/, ''),  // Удаление префикса /api из URL
+            },
         },
     },
 });
