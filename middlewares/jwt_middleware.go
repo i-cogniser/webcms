@@ -1,32 +1,31 @@
 package middlewares
 
 import (
-	"github.com/golang-jwt/jwt"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
 	"webcms/services"
 
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 )
 
 func JWTMiddleware(authService services.AuthService) echo.MiddlewareFunc {
-	return middleware.JWTWithConfig(middleware.JWTConfig{
-		SigningKey:  []byte(os.Getenv("JWT_SECRET")),
-		TokenLookup: "header:Authorization",
-		AuthScheme:  "Bearer",
-		Claims:      &jwt.StandardClaims{},
-		SuccessHandler: func(c echo.Context) {
-			token := c.Get("user").(*jwt.Token)
-			claims := token.Claims.(*jwt.StandardClaims)
-			c.Set("userID", claims.Subject)
+	config := echojwt.Config{
+		SigningKey: []byte(os.Getenv("JWT_SECRET")),
+		ContextKey: "user",
+		NewClaimsFunc: func(c echo.Context) jwt.Claims {
+			return &jwt.RegisteredClaims{}
 		},
-		ErrorHandlerWithContext: func(err error, c echo.Context) error {
+		ErrorHandler: func(c echo.Context, err error) error {
+			fmt.Printf("JWT Error: %v\n", err) // Добавлено для отладки
 			if strings.Contains(err.Error(), "token is expired") {
 				return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Token has expired"})
 			}
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid token"})
 		},
-	})
+	}
+	return echojwt.WithConfig(config)
 }

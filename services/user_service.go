@@ -1,6 +1,7 @@
 package services
 
 import (
+	"errors"
 	"github.com/jinzhu/gorm"
 	"webcms/models"
 	"webcms/repositories"
@@ -49,6 +50,23 @@ func (s *userService) GetAllUsers() ([]models.User, error) {
 }
 
 func (s *userService) CreateUser(user models.User) error {
+	// Проверка на дублирование
+	existingUser, err := s.userRepository.FindByUsername(user.Username)
+	if err != nil {
+		return err
+	}
+	if existingUser != nil {
+		return errors.New("username already exists")
+	}
+
+	existingUserByEmail, err := s.userRepository.GetUserByEmail(user.Email)
+	if err != nil {
+		return err
+	}
+	if existingUserByEmail.ID != 0 { // Проверяем, что email уже существует
+		return errors.New("email already exists")
+	}
+
 	return execWithTx(s.db, func(tx *gorm.DB) error {
 		return s.userRepository.CreateUserWithTx(user, tx)
 	})

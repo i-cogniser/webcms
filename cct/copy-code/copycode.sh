@@ -71,6 +71,7 @@ while IFS= read -r line || [ -n "$line" ]; do
         else
             if ! $first_file; then
                 echo "=============================================================" >> "$output_file"
+                echo "=============================================================" >> "$output_file"
             fi
             echo "Имя Файла: $file_name" >> "$output_file"
             echo "$found_files" | while IFS= read -r file; do
@@ -144,12 +145,14 @@ print_tree() {
 # Выводим структуру проекта
 log "Шаг 3: Создание структуры проекта"
 echo "=============================================================" >> "$output_file"
+echo "=============================================================" >> "$output_file"
 echo "Структура проекта:" >> "$output_file"
 echo "${project_name}/" >> "$output_file"
 print_tree "${project_root}" ""
 
 # Выводим список ненайденных файлов
 if [ ${#not_found_files[@]} -gt 0 ]; then
+    echo "=============================================================" >> "$output_file"
     echo "=============================================================" >> "$output_file"
     echo "Список не найденных файлов:" >> "$output_file"
     for file in "${not_found_files[@]}"; do

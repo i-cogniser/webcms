@@ -33,7 +33,7 @@ const router = useRouter()
 
 onMounted(async () => {
   try {
-    const response = await axios.get(/api/pages/${route.params.id})
+    const response = await axios.get(`/api/pages/${route.params.id}`)
     page.value = response.data
   } catch (error) {
     console.error('Не удалось получить данные страницы:', error)
@@ -42,7 +42,7 @@ onMounted(async () => {
 
 const updatePage = async () => {
   try {
-    await axios.put(/api/pages/${route.params.id}, page.value)
+    await axios.put(`/api/pages/${route.params.id}`, page.value)
     router.push('/pages')
   } catch (error) {
     console.error('Не удалось обновить страницу:', error)

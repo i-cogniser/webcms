@@ -6,20 +6,20 @@ export default defineConfig({
     plugins: [vue()],
     build: {
         outDir: 'dist',
+        rollupOptions: {
+            input: {
+                main: path.resolve(__dirname, 'index.html'),
+            },
+            output: {
+                entryFileNames: 'assets/[name].[hash].js',
+                chunkFileNames: 'assets/[name].[hash].js',
+                assetFileNames: 'assets/[name].[hash].[ext]',
+            },
+        },
     },
     resolve: {
         alias: {
             '@': path.resolve(__dirname, 'src'),
-        },
-    },
-    server: {
-        proxy: {
-            '/api': {
-                target: 'http://web:8080',  // Внутренний адрес Docker Compose
-                changeOrigin: true,
-                secure: false,
-                rewrite: path => path.replace(/^\/api/, ''),  // Удаление префикса /api из URL
-            },
         },
     },
 });

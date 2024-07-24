@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/golang-jwt/jwt/v5"
 	"html/template"
 	"log"
 	"net/http"
@@ -88,14 +89,24 @@ func main() {
 	contentService := services.NewContentService(postRepository, pageRepository, db)
 
 	// Инициализация контроллеров
-	authController := controllers.NewAuthController(authService)
-	userController := controllers.NewUserController(userService, authService)
+	authController := controllers.NewAuthController(authService, sugar)
+	userController := controllers.NewUserController(userService, authService, sugar)
 	contentController := controllers.NewContentController(contentService)
 
 	// Инициализация Echo
 	e := echo.New()
 
-	// Middleware
+	// Middleware для логирования запросов
+	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			path := c.Request().URL.Path
+			method := c.Request().Method
+			sugar.Infof("Request received: %s %s", method, path)
+			return next(c)
+		}
+	})
+
+	// Middleware для обработки логов и восстановления
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
@@ -111,7 +122,16 @@ func main() {
 	}
 	e.Renderer = renderer
 
-	// Применение middleware для проверки токена на защищенных маршрутах
+	// Настройка обработчика ошибок
+	e.HTTPErrorHandler = func(err error, c echo.Context) {
+		if he, ok := err.(*echo.HTTPError); ok {
+			if he.Code == http.StatusNotFound {
+				c.JSON(http.StatusNotFound, map[string]string{"message": "Not Found"})
+				return
+			}
+		}
+		e.DefaultHTTPErrorHandler(err, c)
+	}
 
 	// Роуты для аутентификации
 	e.POST("/api/register", authController.Register)
@@ -121,6 +141,23 @@ func main() {
 
 	// Защищенные маршруты для пользователей
 	userGroup := e.Group("/users", middlewares.JWTMiddleware(authService))
+	userGroup.POST("", func(c echo.Context) error { // <-- Здесь добавляем новый маршрут
+		var user models.User
+		if err := c.Bind(&user); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
+		}
+
+		existingUser, err := userRepository.FindByUsername(user.Username)
+		if err == nil && existingUser != nil {
+			return c.JSON(http.StatusConflict, map[string]string{"error": "Username already exists"})
+		}
+
+		if err := userRepository.CreateUser(user); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create user"})
+		}
+
+		return c.JSON(http.StatusCreated, user)
+	})
 	userGroup.POST("", userController.CreateUser)
 	userGroup.GET("/:id", userController.GetUserByID)
 	userGroup.PUT("/:id", userController.UpdateUser)
@@ -143,6 +180,14 @@ func main() {
 	pageGroup.DELETE("/:id", contentController.DeletePage)
 	pageGroup.GET("", contentController.GetAllPages)
 
+	// Защищенный маршрут
+	protectedGroup := e.Group("/api/protected", middlewares.JWTMiddleware(authService))
+	protectedGroup.GET("", func(c echo.Context) error {
+		user := c.Get("user").(*jwt.Token)
+		claims := user.Claims.(*jwt.RegisteredClaims)
+		return c.JSON(http.StatusOK, claims)
+	})
+
 	// Роуты для статистики
 	e.GET("/api/users/count", func(c echo.Context) error {
 		count, err := userRepository.Count()
@@ -158,7 +203,6 @@ func main() {
 		if err != nil {
 			sugar.Errorf("Failed to get pages count: %v", err)
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get users count"})
-
 		}
 		return c.JSON(http.StatusOK, map[string]int{"count": count})
 	})
@@ -168,7 +212,6 @@ func main() {
 		if err != nil {
 			sugar.Errorf("Failed to get posts count: %v", err)
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get users count"})
-
 		}
 		return c.JSON(http.StatusOK, map[string]int{"count": count})
 	})
@@ -190,14 +233,20 @@ func main() {
 	// Статические файлы
 	frontendPath := os.Getenv("FRONTEND_PATH")
 	if frontendPath == "" {
-		frontendPath = "static"
+		frontendPath = "webcms-vue/dist"
 	}
 
 	absFrontendPath, err := filepath.Abs(frontendPath)
 	if err != nil {
 		sugar.Fatalf("Failed to get absolute path for frontend: %v", err)
 	}
-	e.Static("/", absFrontendPath)
+	e.Static("/", filepath.Join(absFrontendPath, "public"))
+
+	// Обработчик для всех маршрутов, которые не являются API-запросами
+	e.GET("/*", func(c echo.Context) error {
+		sugar.Infof("Handling route: %s", c.Request().URL.Path)
+		return c.File(filepath.Join(absFrontendPath, "index.html"))
+	})
 
 	// Периодическая проверка и удаление устаревших токенов
 	go func() {

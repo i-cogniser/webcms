@@ -33,7 +33,7 @@ const router = useRouter()
 
 onMounted(async () => {
   try {
-    const response = await axios.get(/api/posts/${route.params.id})
+    const response = await axios.get(`/api/posts/${route.params.id}`)
     post.value = response.data
   } catch (error) {
     console.error('Не удалось получить данные записи:', error)
@@ -42,7 +42,7 @@ onMounted(async () => {
 
 const updatePost = async () => {
   try {
-    await axios.put(/api/posts/${route.params.id}, post.value)
+    await axios.put(`/api/posts/${route.params.id}`, post.value)
     router.push('/posts')
   } catch (error) {
     console.error('Не удалось обновить запись:', error)

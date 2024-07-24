@@ -5,11 +5,11 @@ FROM node:18-alpine AS frontend-builder
 WORKDIR /frontend
 
 # Копирование файлов проекта и установка зависимостей
-COPY webcms-vue/package.json webcms-vue/package-lock.json ./
+COPY ./webcms-vue/package.json ./webcms-vue/package-lock.json ./
 RUN npm install
 
 # Копирование остального кода фронтенда в рабочую директорию
-COPY webcms-vue ./
+COPY ./webcms-vue ./
 
 # Сборка фронтенд-приложения и сохранение логов
 RUN npm run build > /frontend/build.log 2>&1 || (cat /frontend/build.log && exit 1)

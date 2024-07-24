@@ -15,7 +15,8 @@ type UserRepository interface {
 	DeleteUser(id uint) error
 	DeleteUserWithTx(id uint, tx *gorm.DB) error
 	GetAllUsers() ([]models.User, error)
-	Count() (int, error) // Добавлен новый метод для подсчета количества пользователей
+	Count() (int, error)                                  // Добавлен новый метод для подсчета количества пользователей
+	FindByUsername(username string) (*models.User, error) // Добавляем метод для поиска пользователя по имени
 }
 
 type userRepository struct {
@@ -33,8 +34,6 @@ func (r *userRepository) CreateUser(user models.User) error {
 func (r *userRepository) CreateUserWithTx(user models.User, tx *gorm.DB) error {
 	return tx.Create(&user).Error
 }
-
-// Остальные методы UserRepository остаются без изменений
 
 func (r *userRepository) GetUserByID(id uint) (models.User, error) {
 	var user models.User
@@ -70,11 +69,24 @@ func (r *userRepository) GetAllUsers() ([]models.User, error) {
 	return users, err
 }
 
-// Новый метод для подсчета количества пользователей
+// Count Реализация нового метода для подсчета количества пользователей
 func (r *userRepository) Count() (int, error) {
 	var count int
 	if err := r.db.Model(&models.User{}).Count(&count).Error; err != nil {
 		return 0, err
 	}
 	return count, nil
+}
+
+// FindByUsername Реализация нового метода для поиска пользователя по имени
+func (r *userRepository) FindByUsername(username string) (*models.User, error) {
+	var user models.User
+	err := r.db.Where("username = ?", username).First(&user).Error
+	if err != nil {
+		if gorm.IsRecordNotFoundError(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &user, nil
 }

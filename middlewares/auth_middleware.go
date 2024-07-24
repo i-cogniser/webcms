@@ -1,8 +1,9 @@
 package middlewares
 
 import (
+	"errors"
 	"fmt"
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 	"net/http"
 	"os"
 	"strings"
@@ -29,7 +30,7 @@ func AuthMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 			return c.JSON(http.StatusInternalServerError, "JWT secret not configured")
 		}
 
-		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		token, err := jwt.ParseWithClaims(tokenString, &jwt.RegisteredClaims{}, func(token *jwt.Token) (interface{}, error) {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 			}
@@ -44,7 +45,7 @@ func AuthMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 			return c.JSON(http.StatusUnauthorized, "Unauthorized")
 		}
 
-		claims, ok := token.Claims.(jwt.MapClaims)
+		claims, ok := token.Claims.(*jwt.RegisteredClaims)
 		if !ok {
 			return c.JSON(http.StatusUnauthorized, "Unauthorized")
 		}
@@ -60,8 +61,9 @@ func ErrorHandler(next echo.HandlerFunc) echo.HandlerFunc {
 		err := next(c)
 		if err != nil {
 			fmt.Printf("Error occurred: %v\n", err)
-			switch e := err.(type) {
-			case *echo.HTTPError:
+			var e *echo.HTTPError
+			switch {
+			case errors.As(err, &e):
 				return c.JSON(e.Code, e.Message)
 			default:
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Internal Server Error"})

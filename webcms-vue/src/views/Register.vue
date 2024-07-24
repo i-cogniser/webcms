@@ -1,18 +1,20 @@
 <template>
   <div>
     <h1>Register</h1>
-    <b-form @submit.prevent="register">
-      <b-form-group label="Name">
-        <b-form-input v-model="name" type="text" required />
-      </b-form-group>
-      <b-form-group label="Email">
-        <b-form-input v-model="email" type="email" required />
-      </b-form-group>
-      <b-form-group label="Password">
-        <b-form-input v-model="password" type="password" required />
-      </b-form-group>
-      <b-button type="submit" variant="primary">Register</b-button>
-    </b-form>
+    <form @submit.prevent="register">
+      <label for="name">Name</label>
+      <input id="name" v-model="name" type="text" required />
+
+      <label for="email">Email</label>
+      <input id="email" v-model="email" type="email" required />
+
+      <label for="password">Password</label>
+      <input id="password" v-model="password" type="password" required />
+
+      <button type="submit">Register</button>
+
+      <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
+    </form>
   </div>
 </template>
 
@@ -23,13 +25,21 @@ import axios from 'axios'
 const name = ref('')
 const email = ref('')
 const password = ref('')
+const errorMessage = ref('')
 
 const register = async () => {
   try {
     await axios.post('/api/register', { name: name.value, email: email.value, password: password.value })
     // Handle successful registration
+    alert('Registration successful!')
   } catch (error) {
-    console.error('Registration failed:', error)
+    errorMessage.value = 'Registration failed: ' + error.response.data.error
   }
 }
 </script>
+
+<style scoped>
+.error {
+  color: red;
+}
+</style>

@@ -11,6 +11,8 @@ import EditPost from '../views/EditPost.vue';
 import DeleteUser from '../components/DeleteUser.vue';
 import DeletePage from '../components/DeletePage.vue';
 import DeletePost from '../components/DeletePost.vue';
+import Register from '../views/Register.vue';
+
 
 const routes = [
     {
@@ -80,6 +82,11 @@ const routes = [
         name: 'DeletePost',
         component: DeletePost,
         props: true
+    },
+    {
+        path: '/register',
+        name: 'Register',
+        component: Register
     }
 ];
 

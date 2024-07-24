@@ -1,10 +1,13 @@
--- V1__create_tables.sql
-CREATE TABLE IF NOT EXISTS users (
-    id SERIAL PRIMARY KEY,
-    username VARCHAR(50) UNIQUE NOT NULL,
-    email VARCHAR(100) UNIQUE NOT NULL,
-    password VARCHAR(100) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
--- Добавьте здесь создание других необходимых таблиц
+CREATE TABLE users
+(
+    id         SERIAL PRIMARY KEY,
+    username   VARCHAR(255) NOT NULL UNIQUE,
+    first_name VARCHAR(255),
+    last_name  VARCHAR(255),
+    email      VARCHAR(255) NOT NULL UNIQUE,
+    password   VARCHAR(255) NOT NULL,
+    role       VARCHAR(50)  NOT NULL,
+    name       VARCHAR(100) NOT NULL,
+    created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
