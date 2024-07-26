@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import Home from '../views/Home.vue';
+import Register from '../views/Register.vue';
 import Users from '../components/UserList.vue';
 import Pages from '../components/PageList.vue';
 import Posts from '../components/PostList.vue';
@@ -11,7 +12,6 @@ import EditPost from '../views/EditPost.vue';
 import DeleteUser from '../components/DeleteUser.vue';
 import DeletePage from '../components/DeletePage.vue';
 import DeletePost from '../components/DeletePost.vue';
-import Register from '../views/Register.vue';
 
 
 const routes = [
@@ -19,6 +19,11 @@ const routes = [
         path: '/',
         name: 'Home',
         component: Home
+    },
+    {
+        path: '/register',
+        name: 'Register',
+        component: Register
     },
     {
         path: '/users',
@@ -83,11 +88,6 @@ const routes = [
         component: DeletePost,
         props: true
     },
-    {
-        path: '/register',
-        name: 'Register',
-        component: Register
-    }
 ];
 
 const router = createRouter({

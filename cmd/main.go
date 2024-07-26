@@ -3,6 +3,12 @@ package main
 import (
 	"fmt"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jinzhu/gorm"
+	_ "github.com/jinzhu/gorm/dialects/postgres" // Используем текущую версию GORM
+	"github.com/joho/godotenv"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
+	"go.uber.org/zap"
 	"html/template"
 	"log"
 	"net/http"
@@ -15,13 +21,6 @@ import (
 	"webcms/rendering"
 	"webcms/repositories"
 	"webcms/services"
-
-	"github.com/jinzhu/gorm"
-	_ "github.com/jinzhu/gorm/dialects/postgres" // Используем текущую версию GORM
-	"github.com/joho/godotenv"
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
-	"go.uber.org/zap"
 )
 
 func main() {
@@ -141,23 +140,6 @@ func main() {
 
 	// Защищенные маршруты для пользователей
 	userGroup := e.Group("/users", middlewares.JWTMiddleware(authService))
-	userGroup.POST("", func(c echo.Context) error { // <-- Здесь добавляем новый маршрут
-		var user models.User
-		if err := c.Bind(&user); err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
-		}
-
-		existingUser, err := userRepository.FindByUsername(user.Username)
-		if err == nil && existingUser != nil {
-			return c.JSON(http.StatusConflict, map[string]string{"error": "Username already exists"})
-		}
-
-		if err := userRepository.CreateUser(user); err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create user"})
-		}
-
-		return c.JSON(http.StatusCreated, user)
-	})
 	userGroup.POST("", userController.CreateUser)
 	userGroup.GET("/:id", userController.GetUserByID)
 	userGroup.PUT("/:id", userController.UpdateUser)

@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h1>Register</h1>
+    <h1>Регистрация</h1>
     <form @submit.prevent="register">
       <label for="name">Name</label>
       <input id="name" v-model="name" type="text" required />
@@ -40,6 +40,6 @@ const register = async () => {
 
 <style scoped>
 .error {
-  color: red;
+  color: #d40808;
 }
 </style>
