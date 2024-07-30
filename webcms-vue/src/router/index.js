@@ -1,9 +1,9 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import Home from '../views/Home.vue';
 import Register from '../views/Register.vue';
-import Users from '../components/UserList.vue';
-import Pages from '../components/PageList.vue';
-import Posts from '../components/PostList.vue';
+import UserList from '../components/UserList.vue';  // Убедитесь, что здесь правильный импорт
+import PageList from '../components/PageList.vue';
+import PostList from '../components/PostList.vue';
 import UserDetail from '../components/UserDetail.vue';
 import PageDetail from '../components/PageDetail.vue';
 import PostDetail from '../components/PostDetail.vue';
@@ -12,7 +12,6 @@ import EditPost from '../views/EditPost.vue';
 import DeleteUser from '../components/DeleteUser.vue';
 import DeletePage from '../components/DeletePage.vue';
 import DeletePost from '../components/DeletePost.vue';
-
 
 const routes = [
     {
@@ -27,18 +26,18 @@ const routes = [
     },
     {
         path: '/users',
-        name: 'Users',
-        component: Users
+        name: 'UserList',  // Обратите внимание на правильное имя
+        component: UserList
     },
     {
         path: '/pages',
-        name: 'Pages',
-        component: Pages
+        name: 'PageList',
+        component: PageList
     },
     {
         path: '/posts',
-        name: 'Posts',
-        component: Posts
+        name: 'PostList',
+        component: PostList
     },
     {
         path: '/users/:id',
@@ -91,7 +90,7 @@ const routes = [
 ];
 
 const router = createRouter({
-    history: createWebHistory(process.env.BASE_URL),
+    history: createWebHistory(import.meta.env.BASE_URL), // Используйте import.meta.env.BASE_URL для Vite
     routes
 });
 

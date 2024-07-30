@@ -21,7 +21,7 @@ RUN go build -o /app/main ./cmd/main.go
 FROM alpine:3.18
 
 # Установка необходимых утилит
-RUN apk update && apk add --no-cache libgcc libc6-compat curl tar netcat-openbsd bash
+RUN apk update && apk add --no-cache libgcc libc6-compat curl tar bash
 
 # Создание рабочей директории
 WORKDIR /app
@@ -44,5 +44,5 @@ ENV JWT_SECRET=${JWT_SECRET}
 # Открываем порт приложения
 EXPOSE 8080
 
-# Скрипт ожидания готовности базы данных и запуск приложения
-CMD ["sh", "-c", "until nc -z -v -w30 db 5432; do echo 'Waiting for database connection...'; sleep 5; done; /app/main"]
+# Запуск приложения
+CMD ["/app/main"]

@@ -1,13 +1,15 @@
 package repositories
 
 import (
-	"github.com/jinzhu/gorm"
+	"errors"
 	"webcms/models"
+
+	"github.com/jinzhu/gorm"
 )
 
 type UserRepository interface {
 	CreateUser(user models.User) error
-	CreateUserWithTx(user models.User, tx *gorm.DB) error // Подтверждение наличия метода CreateUserWithTx
+	CreateUserWithTx(user models.User, tx *gorm.DB) error
 	GetUserByID(id uint) (models.User, error)
 	GetUserByEmail(email string) (models.User, error)
 	UpdateUser(user models.User) error
@@ -15,8 +17,8 @@ type UserRepository interface {
 	DeleteUser(id uint) error
 	DeleteUserWithTx(id uint, tx *gorm.DB) error
 	GetAllUsers() ([]models.User, error)
-	Count() (int, error)                                  // Добавлен новый метод для подсчета количества пользователей
-	FindByUsername(username string) (*models.User, error) // Добавляем метод для поиска пользователя по имени
+	Count() (int, error)
+	FindByUsername(username string) (*models.User, error)
 }
 
 type userRepository struct {
@@ -28,10 +30,22 @@ func NewUserRepository(db *gorm.DB) UserRepository {
 }
 
 func (r *userRepository) CreateUser(user models.User) error {
+	var existingUser models.User
+	if err := r.db.Where("username = ? OR email = ?", user.Username, user.Email).First(&existingUser).Error; err == nil {
+		return errors.New("user with the same username or email already exists")
+	} else if !gorm.IsRecordNotFoundError(err) {
+		return err
+	}
 	return r.db.Create(&user).Error
 }
 
 func (r *userRepository) CreateUserWithTx(user models.User, tx *gorm.DB) error {
+	var existingUser models.User
+	if err := tx.Where("username = ? OR email = ?", user.Username, user.Email).First(&existingUser).Error; err == nil {
+		return errors.New("user with the same username or email already exists")
+	} else if !gorm.IsRecordNotFoundError(err) {
+		return err
+	}
 	return tx.Create(&user).Error
 }
 
@@ -69,7 +83,6 @@ func (r *userRepository) GetAllUsers() ([]models.User, error) {
 	return users, err
 }
 
-// Count Реализация нового метода для подсчета количества пользователей
 func (r *userRepository) Count() (int, error) {
 	var count int
 	if err := r.db.Model(&models.User{}).Count(&count).Error; err != nil {
@@ -78,7 +91,6 @@ func (r *userRepository) Count() (int, error) {
 	return count, nil
 }
 
-// FindByUsername Реализация нового метода для поиска пользователя по имени
 func (r *userRepository) FindByUsername(username string) (*models.User, error) {
 	var user models.User
 	err := r.db.Where("username = ?", username).First(&user).Error

@@ -8,9 +8,9 @@ function CheckServerHealth {
 # Функция для регистрации пользователя
 function RegisterUser {
     $body = @{
-        email = "mail1@example.com"
-        password = "1password1"
-        username = "user1"
+        email = "testuser4@example.com"
+        password = "password4"
+        username = "user4"
         role = "user"
         first_name = "FirstName"
         last_name = "LastName"
@@ -39,8 +39,8 @@ function RegisterUser {
 # Функция для логина и получения токена
 function GetAuthToken {
     $body = @{
-        email = "mail1@example.com"
-        password = "1password1"
+        email = "testuser4@example.com"
+        password = "password4"
     } | ConvertTo-Json
 
     try {
@@ -64,7 +64,7 @@ function GetUsers {
     )
 
     try {
-        $usersResponse = Invoke-WebRequest -Uri "http://localhost:8080/users" `
+        $usersResponse = Invoke-WebRequest -Uri "http://localhost:8080/api/users" `
             -Method GET `
             -Headers @{ Authorization = "Bearer $token" }
 

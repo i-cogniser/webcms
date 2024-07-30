@@ -14,6 +14,11 @@ services:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   flyway:
     image: flyway/flyway
@@ -24,7 +29,8 @@ services:
     volumes:
       - ./db/migrations:/flyway/sql
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     networks:
       - webcms-network
 
@@ -38,10 +44,17 @@ services:
     env_file:
       - .env
     depends_on:
-      - db
-      - flyway
+      db:
+        condition: service_healthy
+      flyway:
+        condition: service_completed_successfully
     networks:
       - webcms-network
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:8080/api/health || exit 1" ]
+      interval: 20s
+      timeout: 10s
+      retries: 3
 
   frontend:
     build:
@@ -53,7 +66,8 @@ services:
     networks:
       - webcms-network
     depends_on:
-      - web
+      web:
+        condition: service_healthy
 
 volumes:
   postgres-data:

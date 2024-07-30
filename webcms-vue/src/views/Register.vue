@@ -1,45 +1,49 @@
 <template>
   <div>
-    <h1>Регистрация</h1>
+    <h1>Register</h1>
     <form @submit.prevent="register">
-      <label for="name">Name</label>
-      <input id="name" v-model="name" type="text" required />
-
-      <label for="email">Email</label>
-      <input id="email" v-model="email" type="email" required />
-
-      <label for="password">Password</label>
-      <input id="password" v-model="password" type="password" required />
-
+      <input type="text" v-model="username" placeholder="Username" required />
+      <input type="email" v-model="email" placeholder="Email" required />
+      <input type="password" v-model="password" placeholder="Password" required />
       <button type="submit">Register</button>
-
-      <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
     </form>
+    <div v-if="error" class="error">{{ error }}</div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import axios from 'axios'
+import { ref } from 'vue';
+import axios from 'axios';
 
-const name = ref('')
-const email = ref('')
-const password = ref('')
-const errorMessage = ref('')
+const username = ref('');
+const email = ref('');
+const password = ref('');
+const error = ref(null);
 
 const register = async () => {
+  error.value = null; // Сброс ошибки перед началом регистрации
   try {
-    await axios.post('/api/register', { name: name.value, email: email.value, password: password.value })
-    // Handle successful registration
-    alert('Registration successful!')
-  } catch (error) {
-    errorMessage.value = 'Registration failed: ' + error.response.data.error
+    const response = await axios.post('/api/register', {
+      username: username.value,
+      email: email.value,
+      password: password.value
+    });
+    alert('Registration successful');
+  } catch (err) {
+    console.error('Registration failed:', err); // Выводим полную ошибку в консоль для отладки
+    if (err.response) {
+      error.value = `Registration failed: ${err.response.data.message || err.response.data.error || 'Unknown error'}`;
+    } else if (err.request) {
+      error.value = 'Registration failed: No response from server';
+    } else {
+      error.value = `Registration failed: ${err.message}`;
+    }
   }
-}
+};
 </script>
 
-<style scoped>
+<style>
 .error {
-  color: #d40808;
+  color: red;
 }
 </style>

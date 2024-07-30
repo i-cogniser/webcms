@@ -2,7 +2,9 @@ package services
 
 import (
 	"errors"
+	"go.uber.org/zap"
 	"os"
+	"strconv"
 	"time"
 	"webcms/models"
 	"webcms/repositories"
@@ -26,10 +28,11 @@ type authService struct {
 	userRepo  repositories.UserRepository
 	tokenRepo repositories.TokenRepository
 	db        *gorm.DB
+	logger    *zap.SugaredLogger
 }
 
-func NewAuthService(userRepo repositories.UserRepository, tokenRepo repositories.TokenRepository, db *gorm.DB) AuthService {
-	return &authService{userRepo: userRepo, tokenRepo: tokenRepo, db: db}
+func NewAuthService(userRepo repositories.UserRepository, tokenRepo repositories.TokenRepository, db *gorm.DB, logger *zap.SugaredLogger) AuthService {
+	return &authService{userRepo: userRepo, tokenRepo: tokenRepo, db: db, logger: logger}
 }
 
 func (s *authService) Register(user models.User) error {
@@ -53,11 +56,19 @@ func (s *authService) Register(user models.User) error {
 func (s *authService) RegisterWithTx(user models.User, tx *gorm.DB) error {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
+		s.logger.Errorf("Error hashing password: %v", err)
 		return err
 	}
 	user.Password = string(hashedPassword)
 
-	return s.userRepo.CreateUserWithTx(user, tx)
+	// Сохранение пользователя в базе данных
+	if err := tx.Create(&user).Error; err != nil {
+		s.logger.Errorf("Error creating user: %v", err)
+		return err
+	}
+
+	s.logger.Infof("User registered successfully: %+v", user)
+	return nil
 }
 
 func (s *authService) Login(email, password string) (*models.User, error) {
@@ -73,21 +84,24 @@ func (s *authService) Login(email, password string) (*models.User, error) {
 }
 
 func (s *authService) GenerateJWT(user *models.User) (string, error) {
-	tx := s.db.Begin()
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-		}
-	}()
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		return "", errors.New("JWT secret not configured")
+	}
 
-	token, err := s.GenerateJWTWithTx(user, tx)
+	expirationTime := time.Now().Add(24 * time.Hour)
+	claims := &jwt.StandardClaims{
+		ExpiresAt: expirationTime.Unix(),
+		Subject:   strconv.Itoa(int(user.ID)),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString([]byte(jwtSecret))
 	if err != nil {
-		tx.Rollback()
 		return "", err
 	}
 
-	tx.Commit()
-	return token, nil
+	return tokenString, nil
 }
 
 func (s *authService) GenerateJWTWithTx(user *models.User, tx *gorm.DB) (string, error) {
@@ -99,7 +113,7 @@ func (s *authService) GenerateJWTWithTx(user *models.User, tx *gorm.DB) (string,
 	expirationTime := time.Now().Add(24 * time.Hour)
 	claims := &jwt.StandardClaims{
 		ExpiresAt: expirationTime.Unix(),
-		Subject:   string(user.ID),
+		Subject:   strconv.Itoa(int(user.ID)),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

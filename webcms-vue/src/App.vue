@@ -1,17 +1,26 @@
 <script setup>
-import { RouterView } from 'vue-router'
+import { RouterView, RouterLink } from 'vue-router'
 </script>
 
 <template>
   <div>
-    <a href="https://vitejs.dev" target="_blank">
-      <img src="/vite.svg" class="logo" alt="Vite logo"/>
-    </a>
-    <a href="https://vuejs.org/" target="_blank">
-      <img src="./assets/vue.svg" class="logo vue" alt="Vue logo"/>
-    </a>
+    <header>
+      <nav>
+        <a href="https://vitejs.dev" target="_blank">
+          <img src="/vite.svg" class="logo" alt="Vite logo"/>
+        </a>
+        <a href="https://vuejs.org/" target="_blank">
+          <img src="./assets/vue.svg" class="logo vue" alt="Vue logo"/>
+        </a>
+        <RouterLink to="/">Home</RouterLink>
+        <RouterLink to="/register">Register</RouterLink>
+        <RouterLink to="/users">Users</RouterLink>
+        <RouterLink to="/pages">Pages</RouterLink>
+        <RouterLink to="/posts">Posts</RouterLink>
+      </nav>
+    </header>
+    <RouterView />
   </div>
-  <RouterView />
 </template>
 
 <style scoped>

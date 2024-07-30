@@ -20,6 +20,9 @@ FROM node:18-alpine
 # Установка http-server для обслуживания статических файлов
 RUN npm install -g http-server
 
+# Установка curl
+RUN apk add --no-cache curl
+
 # Создание рабочей директории
 WORKDIR /frontend
 

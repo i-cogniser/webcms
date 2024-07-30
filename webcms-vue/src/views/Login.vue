@@ -1,31 +1,49 @@
 <template>
   <div>
     <h1>Login</h1>
-    <b-form @submit.prevent="login">
-      <b-form-group label="Email">
-        <b-form-input v-model="email" type="email" required />
-      </b-form-group>
-      <b-form-group label="Password">
-        <b-form-input v-model="password" type="password" required />
-      </b-form-group>
-      <b-button type="submit" variant="primary">Login</b-button>
-    </b-form>
+    <form @submit.prevent="handleLogin">
+      <div>
+        <label for="username">Username:</label>
+        <input v-model="username" id="username" type="text" required />
+      </div>
+      <div>
+        <label for="password">Password:</label>
+        <input v-model="password" id="password" type="password" required />
+      </div>
+      <button type="submit">Login</button>
+      <div v-if="error" class="error">{{ error }}</div>
+    </form>
   </div>
 </template>
 
 <script setup>
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import axios from 'axios'
 
-const email = ref('')
+const username = ref('')
 const password = ref('')
+const error = ref(null)
+const router = useRouter()
 
-const login = async () => {
+const handleLogin = async () => {
   try {
-    await axios.post('/api/login', { email: email.value, password: password.value })
-    // Handle successful login
-  } catch (error) {
-    console.error('Login failed:', error)
+    const response = await axios.post('/api/login', {
+      username: username.value,
+      password: password.value
+    })
+    localStorage.setItem('jwtToken', response.data.token)
+    // Перенаправление на страницу пользователей
+    router.push('/users')
+  } catch (err) {
+    error.value = 'Failed to login: ' + err.message
+    console.error('Failed to login:', err)
   }
 }
 </script>
+
+<style>
+.error {
+  color: red;
+}
+</style>

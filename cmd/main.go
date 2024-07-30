@@ -23,6 +23,18 @@ import (
 	"webcms/services"
 )
 
+func waitForDB(dbURL string, retries int, delay time.Duration) error {
+	for i := 0; i < retries; i++ {
+		db, err := gorm.Open("postgres", dbURL)
+		if err == nil {
+			db.Close()
+			return nil
+		}
+		time.Sleep(delay)
+	}
+	return fmt.Errorf("database not ready after %d attempts", retries)
+}
+
 func main() {
 	// Инициализация логгера
 	logger, err := zap.NewProduction()
@@ -31,7 +43,7 @@ func main() {
 	}
 	defer logger.Sync()
 	sugar := logger.Sugar()
-	fmt.Println("Checkpoint 1: Logger initialized")
+	fmt.Println("Checkpoint 1: Logger initialized successfully")
 
 	// Загрузка переменных окружения из .env файла
 	if err := godotenv.Load(); err != nil {
@@ -39,7 +51,7 @@ func main() {
 	} else {
 		sugar.Infof(".env file loaded successfully")
 	}
-	fmt.Println("Checkpoint 2: Env loaded")
+	fmt.Println("Checkpoint 2: Env loaded successfully")
 
 	// Формирование DATABASE_URL
 	dbURL := os.Getenv("DATABASE_URL")
@@ -52,7 +64,12 @@ func main() {
 
 		dbURL = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", dbUser, dbPassword, dbHost, dbPort, dbName)
 	}
-	fmt.Println("Checkpoint 3: DB URL formed")
+	fmt.Println("Checkpoint 3: DBURL successfully")
+
+	// Ожидание готовности базы данных
+	if err := waitForDB(dbURL, 10, 5*time.Second); err != nil {
+		sugar.Fatalf("Database not ready: %v", err)
+	}
 
 	// Логирование URL базы данных
 	sugar.Infof("Connecting to database: %s", dbURL)
@@ -67,13 +84,13 @@ func main() {
 	}
 	defer db.Close()
 
-	fmt.Println("Checkpoint 4: DB connected")
+	fmt.Println("Checkpoint 4: DB connected successfully")
 
 	// Автоматическая миграция моделей
 	if err := db.AutoMigrate(&models.User{}, &models.Post{}, &models.Page{}, &models.Token{}).Error; err != nil {
 		sugar.Fatalf("Failed to migrate database: %v", err)
 	} else {
-		sugar.Infof("Database migrated successfully")
+		sugar.Infof("Checkpoint 5: Database migrated successfully")
 	}
 
 	// Инициализация репозиториев
@@ -83,7 +100,7 @@ func main() {
 	tokenRepository := repositories.NewTokenRepository(db)
 
 	// Инициализация сервисов
-	authService := services.NewAuthService(userRepository, tokenRepository, db)
+	authService := services.NewAuthService(userRepository, tokenRepository, db, sugar)
 	userService := services.NewUserService(userRepository, db)
 	contentService := services.NewContentService(postRepository, pageRepository, db)
 
@@ -111,8 +128,9 @@ func main() {
 
 	// Использование CORS middleware
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: []string{"http://localhost", "http://localhost:80", "http://localhost:8080", "http://localhost:8081"},
+		AllowOrigins: []string{"*"},
 		AllowMethods: []string{http.MethodGet, http.MethodPut, http.MethodPost, http.MethodDelete},
+		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
 	}))
 
 	// Настройка структуры для рендеринга HTML шаблонов
@@ -139,7 +157,7 @@ func main() {
 	e.POST("/api/revoke-token/:id", authController.RevokeToken) // Отзыв токена
 
 	// Защищенные маршруты для пользователей
-	userGroup := e.Group("/users", middlewares.JWTMiddleware(authService))
+	userGroup := e.Group("/api/users", middlewares.JWTMiddleware(authService))
 	userGroup.POST("", userController.CreateUser)
 	userGroup.GET("/:id", userController.GetUserByID)
 	userGroup.PUT("/:id", userController.UpdateUser)
@@ -147,7 +165,7 @@ func main() {
 	userGroup.GET("", userController.GetAllUsers)
 
 	// Защищенные маршруты для постов
-	postGroup := e.Group("/posts", middlewares.JWTMiddleware(authService))
+	postGroup := e.Group("/api/posts", middlewares.JWTMiddleware(authService))
 	postGroup.POST("", contentController.CreatePost)
 	postGroup.GET("/:id", contentController.GetPostByID)
 	postGroup.PUT("/:id", contentController.UpdatePost)
@@ -155,7 +173,7 @@ func main() {
 	postGroup.GET("", contentController.GetAllPosts)
 
 	// Защищенные маршруты для страниц
-	pageGroup := e.Group("/pages", middlewares.JWTMiddleware(authService))
+	pageGroup := e.Group("/api/pages", middlewares.JWTMiddleware(authService))
 	pageGroup.POST("", contentController.CreatePage)
 	pageGroup.GET("/:id", contentController.GetPageByID)
 	pageGroup.PUT("/:id", contentController.UpdatePage)
@@ -184,7 +202,7 @@ func main() {
 		count, err := pageRepository.Count()
 		if err != nil {
 			sugar.Errorf("Failed to get pages count: %v", err)
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get users count"})
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get pages count"})
 		}
 		return c.JSON(http.StatusOK, map[string]int{"count": count})
 	})
@@ -193,7 +211,7 @@ func main() {
 		count, err := postRepository.Count()
 		if err != nil {
 			sugar.Errorf("Failed to get posts count: %v", err)
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get users count"})
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get posts count"})
 		}
 		return c.JSON(http.StatusOK, map[string]int{"count": count})
 	})
@@ -203,7 +221,7 @@ func main() {
 	})
 
 	// Роуты для управления токенами
-	tokenGroup := e.Group("/tokens", middlewares.JWTMiddleware(authService))
+	tokenGroup := e.Group("/api/tokens", middlewares.JWTMiddleware(authService))
 	tokenGroup.GET("/refresh", authController.RefreshToken) // Обновление токена
 	tokenGroup.DELETE("/:id", authController.RevokeToken)   // Отзыв токена
 

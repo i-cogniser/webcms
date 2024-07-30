@@ -30,6 +30,11 @@ func (controller *AuthController) Register(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, err.Error())
 	}
 
+	// Убедитесь, что роль была указана
+	if user.Role == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Role is required"})
+	}
+
 	err := controller.AuthService.Register(*user)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
