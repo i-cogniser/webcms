@@ -6,10 +6,11 @@ WORKDIR /frontend
 
 # Копирование файлов проекта и установка зависимостей
 COPY webcms-vue/package.json webcms-vue/package-lock.json ./
-RUN npm install
+RUN ls -la && npm install
 
 # Копирование остального кода фронтенда в рабочую директорию
 COPY webcms-vue ./
+RUN ls -la
 
 # Сборка фронтенд-приложения и сохранение логов
 RUN npm run build > /frontend/build.log 2>&1 || (cat /frontend/build.log && exit 1)
@@ -28,6 +29,10 @@ WORKDIR /frontend
 
 # Копирование собранных файлов из предыдущего этапа
 COPY --from=frontend-builder /frontend/dist /frontend/dist
+COPY --from=frontend-builder /frontend/build.log /frontend/build.log
+
+# Копирование .htaccess файла
+COPY webcms-vue/.htaccess /frontend/dist/.htaccess
 
 # Определение порта для сервера
 EXPOSE 80

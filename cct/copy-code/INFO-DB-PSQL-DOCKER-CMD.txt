@@ -1,0 +1,80 @@
+PSQL
+// Создание базы данных
+
+CREATE DATABASE webcmsdb;
+CREATE USER userwebcms WITH ENCRYPTED PASSWORD 'adminwebcms';
+GRANT ALL PRIVILEGES ON DATABASE webcmsdb TO userwebcms;
+
+# Перезапустите миграции с Flyway
+docker-compose exec flyway-migrations flyway migrate
+
+# Переподключитесь к новой базе данных
+docker exec -it webcms-db psql -U userwebcms -d webcmsdb
+
+
+# Чтобы не вволить пароль каждый раз можно экспортировать пароль на время сесии
+export PGPASSWORD='admin' && psql -h localhost -p 5432 -U postgres -d webcmsdb
+
+export PGPASSWORD='adminwebcms' && psql -h localhost -p 5432 -U userwebcms -d webcmsdb
+
+export PGPASSWORD='admin' && psql -h localhost -p 5432 -U postgres -d postgres
+
+
+
+//включаем ssl
+ALTER SYSTEM SET ssl = 'off';
+//команду для перезагрузки PostgreSQL:
+SELECT pg_reload_conf();
+
+# Предоставить все привилегии на схему public
+export PGPASSWORD='admin' && psql -h localhost -p 5432 -U postgres -d webcmsdb
+GRANT ALL PRIVILEGES ON SCHEMA public TO userwebcms;
+
+# Предоставить все привилегии на все таблицы в схеме public
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO userwebcms;
+
+# Предоставить все привилегии на все последовательности в схеме public
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO userwebcms;
+
+# Установить search_path по умолчанию для пользователя
+ALTER USER userwebcms SET search_path TO public;
+
+
+
+CREATE USER userwebcms WITH PASSWORD 'adminwebcms';
+GRANT ALL PRIVILEGES ON DATABASE webcmsdb TO userwebcms;
+GRANT ALL PRIVILEGES ON SCHEMA public TO userwebcms;
+ALTER USER userwebcms SET search_path TO public;
+
+\dn+ public
+\du+ userwebcms
+
+psql -h localhost -p 5432 -U userwebcms -d webcmsdb
+
+docker exec -it webcms-db psql -U postgres
+DROP DATABASE IF EXISTS webcmsdb;
+
+# Отключение пользователя и удалени  базы данных в интерактивном режиме
+export PGPASSWORD='admin' && psql -h localhost -p 5432 -U postgres -d postgres
+
+REVOKE CONNECT ON DATABASE webcmsdb FROM PUBLIC;
+SELECT pg_terminate_backend(pg_stat_activity.pid)
+FROM pg_stat_activity
+WHERE pg_stat_activity.datname = 'webcmsdb'
+  AND pid <> pg_backend_pid();
+DROP DATABASE webcmsdb;
+
+# Удалени пользователей баззы данных
+SELECT * FROM users;
+DELETE FROM users;
+
+
+# Эти шаги позволят переназначить все объекты, принадлежащие роли usercms,
+на роль postgres, удалить все привилегии и затем удалить саму роль.
+export PGPASSWORD='admin' && psql -h localhost -p 5432 -U postgres -d postgres
+REASSIGN OWNED BY userwebcms TO postgres;
+DROP OWNED BY userwebcms;
+DROP ROLE userwebcms;
+
+# Выполните запрос, чтобы найти объекты, принадлежащие роли
+SELECT * FROM pg_roles WHERE rolname = 'userwebcms';

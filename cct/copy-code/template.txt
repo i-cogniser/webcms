@@ -1,0 +1,91 @@
+*main.go
+*config.go
+*controllers
+*auth_controller.go
+*content_controller.go
+*user_controller.go
+*auth_middleware.go
+*jwt_middleware.go
+*page.go
+*post.go
+*token.go
+*user.go
+*template_renderer.go
+*page_repository.go
+*post_repository.go
+*repository.go
+*token_repository.go
+*user_repository.go
+*auth_service.go
+*content_service.go
+*page_service.go
+*post_service.go
+*transaction_helper.go
+*user_service.go
+
+*vite.svg
+*style.css
+*styles.css
+
+*App.vue
+*HelloWorld.vue
+*PageDetail.vue
+*PageList.vue
+*PostDetail.vue
+*PostList.vue
+*UserDetail.vue
+*UserList.vue
+*EditPage.vue
+*EditPost.vue
+*Home.vue
+*Login.vue
+*Register.vue
+*AdminDashboard.vue
+
+*main.js
+*index.js
+*vite.config.js
+*script.js
+
+*dashboard.html
+*edit_post.html
+*base.html
+*index.html
+*index.html
+
+*docker-compose.yml
+*frontend.Dockerfile
+*backend.Dockerfile
+
+
+
+Проблемы:
+Ошибка подключения приложения к базе данных на начальном этапе:
+nc: connect to db (172.29.0.2) port 5432 (tcp) failed: Connection refused
+Это сообщение указывает на то, что приложение пыталось подключиться к базе данных до её готовности.
+Позже соединение было установлено успешно, но это может вызвать задержки при старте контейнеров.
+
+404 ошибка на фронтенде:
+POST /api/register Error (404): "Not found"
+Это означает, что фронтенд пытается сделать запрос на регистрацию пользователя, но сервер не может
+найти соответствующий маршрут. Это может быть связано с тем, что API не настроено или маршрут
+написан неверно.
+
+Рекомендации:
+Убедитесь, что база данных готова перед подключением приложения:
+В docker-compose файле можно добавить задержку перед запуском приложения или использовать такие
+инструменты, как wait-for-it или dockerize, чтобы убедиться, что база данных готова к подключениям
+перед стартом приложения.
+
+Проверка маршрутов API:
+Проверьте конфигурацию маршрутов на вашем сервере, убедитесь, что маршрут /api/register существует и
+настроен корректно. Возможно, необходимо добавить обработку этого маршрута в вашем серверном приложении.
+
+Обработка депрекейтед методов во фронтенде:
+Рассмотрите возможность обновления вашего Node.js приложения для использования актуальных методов вместо
+депрекейтед, чтобы избежать предупреждений и возможных проблем в будущем.
+
+Общий вывод:
+
+Ваши логи показывают, что основные компоненты системы запускаются и взаимодействуют между собой,
+однако необходимо решить проблемы с ранним подключением к базе данных и 404 ошибкой на фронтенде.

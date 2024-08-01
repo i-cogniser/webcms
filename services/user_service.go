@@ -2,9 +2,10 @@ package services
 
 import (
 	"errors"
-	"github.com/jinzhu/gorm"
 	"webcms/models"
 	"webcms/repositories"
+
+	"gorm.io/gorm"
 )
 
 type UserService interface {

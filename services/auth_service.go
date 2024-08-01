@@ -2,16 +2,16 @@ package services
 
 import (
 	"errors"
-	"go.uber.org/zap"
 	"os"
 	"strconv"
 	"time"
 	"webcms/models"
 	"webcms/repositories"
 
-	"github.com/golang-jwt/jwt"
-	"github.com/jinzhu/gorm"
+	"github.com/golang-jwt/jwt/v5"
+	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 type AuthService interface {
@@ -73,7 +73,9 @@ func (s *authService) RegisterWithTx(user models.User, tx *gorm.DB) error {
 
 func (s *authService) Login(email, password string) (*models.User, error) {
 	user, err := s.userRepo.GetUserByEmail(email)
-	if err != nil {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, errors.New("invalid credentials")
+	} else if err != nil {
 		return nil, err
 	}
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
@@ -90,8 +92,8 @@ func (s *authService) GenerateJWT(user *models.User) (string, error) {
 	}
 
 	expirationTime := time.Now().Add(24 * time.Hour)
-	claims := &jwt.StandardClaims{
-		ExpiresAt: expirationTime.Unix(),
+	claims := &jwt.RegisteredClaims{
+		ExpiresAt: jwt.NewNumericDate(expirationTime),
 		Subject:   strconv.Itoa(int(user.ID)),
 	}
 
@@ -111,8 +113,8 @@ func (s *authService) GenerateJWTWithTx(user *models.User, tx *gorm.DB) (string,
 	}
 
 	expirationTime := time.Now().Add(24 * time.Hour)
-	claims := &jwt.StandardClaims{
-		ExpiresAt: expirationTime.Unix(),
+	claims := &jwt.RegisteredClaims{
+		ExpiresAt: jwt.NewNumericDate(expirationTime),
 		Subject:   strconv.Itoa(int(user.ID)),
 	}
 

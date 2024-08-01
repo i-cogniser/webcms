@@ -4,7 +4,7 @@ import (
 	"time"
 	"webcms/models"
 
-	"github.com/jinzhu/gorm"
+	"gorm.io/gorm"
 )
 
 type TokenRepository interface {

@@ -1,0 +1,181 @@
+# Остановить и удалить все контейнеры, сети, тома и образы
+docker-compose down --rmi all --volumes --remove-orphans && docker system prune -a --volumes --force && docker builder prune -a
+
+#Проверьте наличие и содержимое папки dist в контейнере:
+docker-compose run --rm frontend sh -c "ls -la /frontend/dist"
+
+docker-compose build --no-cache web
+docker-compose down
+docker-compose up --build
+docker-compose up -d
+docker-compose
+docker-compose build
+docker-compose up --build frontend
+
+
+docker-compose logs
+docker-compose logs db
+docker-compose logs flyway
+docker-compose logs web
+docker-compose logs frontend
+
+docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' webcms-app
+
+wget -qO- http://172.22.0.4:8080/api/health
+curl http://webcms-app:8080/api/users
+ps aux
+
+
+
+docker exec -it 198a0feca7c3 bash
+docker exec -it webcms-db psql -U userwebcms -d webcmsdb
+psql -U userwebcms -d webcmsdb
+SELECT * FROM users;
+DELETE FROM users;
+ALTER SEQUENCE users_id_seq RESTART WITH 1;
+
+PGPASSWORD=adminwebcms psql -h localhost -p 5432 -U userwebcms -d webcmsdb
+SELECT * FROM users;
+DELETE FROM users;
+
+us1
+us13@example.com
+password1
+
+
+DOcker Команды
+Вот основные команды Docker, которые можно использовать в Windows:
+
+1. docker version - Показывает версию Docker, установленную на вашей системе.
+
+2. docker info - Отображает информацию о системе Docker.
+
+3. docker run - Запускает новый контейнер из указанного образа.
+
+4. docker start - Запускает остановленный контейнер.
+
+5. docker stop - Останавливает работающий контейнер.
+
+6. docker rm - Удаляет один или несколько контейнеров.
+
+7. docker rmi - Удаляет один или несколько образов.
+
+8. docker ps - Список всех работающих контейнеров.
+
+9. docker ps -a - Список всех контейнеров (работающих и остановленных).
+
+10. docker images - Список всех загруженных образов.
+
+11. docker build - Создает новый образ из Dockerfile.
+
+12. docker pull - Загружает образ из реестра Docker (например, Docker Hub).
+
+13. docker push - Отправляет образ в реестр Docker.
+
+14. docker logs - Просмотр журналов контейнера.
+
+15. docker exec - Выполняет команду внутри работающего контейнера.
+
+16. docker cp - Копирует файлы или папки между контейнером и хостовой системой.
+
+17. docker network - Управление сетями Docker.
+
+18. docker volume - Управление томами Docker.
+
+19. docker-compose up - Создает и запускает контейнеры из файла `docker-compose.yml`.
+
+20. docker-compose down - Останавливает и удаляет контейнеры, созданные из файла `docker-compose.yml`.
+
+Эти команды позволяют управлять контейнерами, образами, сетями, томами и многим другим в Docker на Windows. Обратите внимание, что для использования некоторых команд может потребоваться запуск PowerShell или командной строки от имени администратора.Вот основные команды Docker Compose для Windows:
+
+1. docker-compose up - Создает и запускает контейнеры, описанные в файле `docker-compose.yml`.
+
+2. docker-compose up -d - Создает и запускает контейнеры в фоновом режиме.
+
+3. docker-compose down - Останавливает и удаляет контейнеры, созданные через `docker-compose up`.
+
+4. docker-compose start - Запускает остановленные контейнеры.
+
+5. docker-compose stop - Останавливает работающие контейнеры.
+
+6. docker-compose restart - Перезапускает контейнеры.
+
+7. docker-compose logs - Показывает журналы контейнеров.
+
+8. docker-compose logs -f - Следит за журналами контейнеров в реальном времени.
+
+9. docker-compose ps - Показывает список контейнеров, созданных через Docker Compose.
+
+10. docker-compose build - Пересоздает образы контейнеров.
+
+11. docker-compose pull - Загружает образы для сервисов, определенных в `docker-compose.yml`.
+
+12. docker-compose push - Отправляет образы в реестр Docker.
+
+13. docker-compose config - Проверяет синтаксис файла `docker-compose.yml`.
+
+14. docker-compose exec - Выполняет команду внутри работающего контейнера.
+
+15. docker-compose run - Запускает одноразовый команду внутри контейнера.
+
+16. docker-compose top - Показывает запущенные процессы в контейнерах.
+
+17. docker-compose port - Печатает открытый порт для указанного сервиса.
+
+18. docker-compose scale - Изменяет количество экземпляров для указанного сервиса.
+
+Эти команды позволяют управлять многоконтейнерными приложениями с помощью Docker Compose на Windows. Для их использования необходимо находиться в каталоге с файлом `docker-compose.yml`.
+
+Вы правы, я упустил некоторые флаги в командах Docker Compose. Вот более полный список команд и флагов:
+
+1. docker-compose up - Создает и запускает контейнеры.
+    - -d - Запускает контейнеры в фоновом режиме (detached mode).
+    - --build - Пересобирает образы перед запуском контейнеров.
+    - --force-recreate - Принудительно пересоздает контейнеры.
+    - --no-deps - Не запускает связанные сервисы.
+
+2. docker-compose down - Останавливает и удаляет контейнеры.
+    - --rmi - Удаляет образы после остановки контейнеров.
+    - --volumes - Удаляет тома после остановки контейнеров.
+    - --remove-orphans - Удаляет контейнеры для сервисов, не определенных в compose-файле.
+
+3. docker-compose start - Запускает остановленные контейнеры.
+
+4. docker-compose stop - Останавливает работающие контейнеры.
+    - --timeout - Задает время ожидания для остановки контейнеров.
+
+5. docker-compose restart - Перезапускает контейнеры.
+
+6. docker-compose logs - Показывает журналы контейнеров.
+    - -f - Следит за журналами в реальном времени.
+    - --tail - Выводит последние строки журналов.
+
+7. docker-compose ps - Показывает список контейнеров.
+    - --services - Показывает только сервисы.
+
+8. docker-compose build - Пересоздает образы контейнеров.
+    - --no-cache - Собирает образы без использования кэша.
+    - --pull - Всегда пытается извлечь более новую версию образа.
+
+9. docker-compose pull - Загружает образы для сервисов.
+    - --ignore-pull-failures - Игнорирует ошибки при загрузке.
+
+10. docker-compose push - Отправляет образы в реестр Docker.
+
+11. docker-compose config - Проверяет синтаксис файла compose.
+
+12. docker-compose exec - Выполняет команду внутри работающего контейнера.
+    - -d - Отключает TTY и открывает stdin.
+
+13. docker-compose run - Запускает одноразовый команду внутри контейнера.
+    - --rm - Удаляет контейнер после завершения команды.
+    - --entrypoint - Переопределяет команду запуска контейнера.
+
+14. docker-compose top - Показывает запущенные процессы в контейнерах.
+
+15. docker-compose port - Печатает открытый порт для указанного сервиса.
+    - --protocol - Указывает протокол (tcp или udp).
+
+16. docker-compose scale - Изменяет количество экземпляров для указанного сервиса.
+
+Этот список включает основные команды Docker Compose и часто используемые флаги. Обратитесь к официальной документации Docker Compose для получения более подробной информации о каждой команде и флаге.

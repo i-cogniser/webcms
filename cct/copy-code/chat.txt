@@ -1,0 +1,1435 @@
+Какие тебе файлы предоставить из моей структуры проекта для решения:
+
+Предостовляю запрашиваемы табой файлы для устранения ошибок:
+
+Предоставляю файлы для решения проблемы, и устранению ошибок:
+Напоминание:
+1. Когда исправляеш ошибки, пишешь только ту часть кода которую исправляешь и где исправляешь.
+2. Код который остается без изменений ты не должен переписывать в целях экономии времени.
+
+Имя Файла: main.go
+Путь: cmd/main.go
+Содержимое:
+package main
+
+import (
+	"os"
+	"path/filepath"
+	"webcms/config"
+	"webcms/rendering"
+	"webcms/routes"
+)
+
+func main() {
+	// Инициализация логгера
+	sugar := config.InitLogger()
+	defer sugar.Sync()
+
+	// Загрузка переменных окружения
+	config.LoadEnv(sugar)
+
+	// Создание базы данных и пользователя, если они не существуют
+	config.CreateDatabaseAndUser(sugar)
+
+	// Получение URL базы данных и логирование
+	dbURL := config.GetDBURL(sugar)
+
+	// Ожидание готовности базы данных
+	config.WaitForDB(dbURL, sugar)
+
+	// Инициализация базы данных
+	db := config.InitDB(dbURL, sugar)
+	defer config.CloseDB(db)
+
+	// Автоматическая миграция моделей
+	config.MigrateDB(db, sugar)
+
+	// Инициализация репозиториев, сервисов и контроллеров
+	services := config.InitServices(db, sugar)
+
+	// Инициализация Echo
+	e := config.SetupEcho(sugar)
+
+	// Настройка рендеринга шаблонов
+	rendering.SetupRenderer(e)
+
+	// Статические файлы
+	frontendPath := os.Getenv("FRONTEND_PATH")
+	if frontendPath == "" {
+		frontendPath = "webcms-vue/dist"
+	}
+	absFrontendPath, err := filepath.Abs(frontendPath)
+	if err != nil {
+		sugar.Fatalf("Failed to get absolute path for frontend: %v", err)
+	}
+
+	// Инициализация маршрутов
+	routes.InitRoutes(e, services.AuthController, services.UserController, services.UserRepository, services.AuthService, services.TokenRepository, sugar, absFrontendPath)
+
+	// Периодическая проверка и удаление устаревших токенов
+	go config.StartTokenCleanupProcess(services.TokenRepository, sugar)
+
+	// Запуск сервера
+	e.Logger.Fatal(e.Start(":8080"))
+}
+
+=============================================================
+=============================================================
+Имя Файла: routes.go
+Путь: routes/routes.go
+Содержимое:
+package routes
+
+import (
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/labstack/echo/v4"
+	"go.uber.org/zap"
+	"net/http"
+	"path/filepath"
+	"webcms/controllers"
+	"webcms/middlewares"
+	"webcms/repositories"
+	"webcms/services"
+)
+
+func InitRoutes(e *echo.Echo, authController *controllers.AuthController, userController *controllers.UserController, userRepository repositories.UserRepository, authService services.AuthService, tokenRepository repositories.TokenRepository, sugar *zap.SugaredLogger, absFrontendPath string) {
+	// Роуты для аутентификации
+	e.POST("/api/register", func(c echo.Context) error {
+		sugar.Infof("Handling /api/register")
+		return authController.Register(c)
+	})
+	e.POST("/api/login", authController.Login)
+	e.POST("/api/refresh-token", authController.RefreshToken)   // Обновление токена
+	e.POST("/api/revoke-token/:id", authController.RevokeToken) // Отзыв токена
+
+	// Защищенные маршруты для пользователей
+	userGroup := e.Group("/api/users", middlewares.JWTMiddleware(authService))
+	userGroup.POST("", userController.CreateUser)
+	userGroup.GET("/:id", userController.GetUserByID)
+	userGroup.PUT("/:id", userController.UpdateUser)
+	userGroup.DELETE("/:id", userController.DeleteUser)
+	userGroup.GET("", userController.GetAllUsers)
+
+	// Защищенный маршрут
+	protectedGroup := e.Group("/api/protected", middlewares.JWTMiddleware(authService))
+	protectedGroup.GET("", func(c echo.Context) error {
+		user := c.Get("user").(*jwt.Token)
+		claims := user.Claims.(*jwt.RegisteredClaims)
+		return c.JSON(http.StatusOK, claims)
+	})
+
+	// Роуты для статистики
+	e.GET("/api/users/count", func(c echo.Context) error {
+		count, err := userRepository.Count()
+		if err != nil {
+			sugar.Errorf("Failed to get users count: %v", err)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get users count"})
+		}
+		return c.JSON(http.StatusOK, map[string]int{"count": count})
+	})
+
+	e.GET("/api/health", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{"message": "OK"})
+	})
+
+	// Роуты для управления токенами
+	tokenGroup := e.Group("/api/tokens", middlewares.JWTMiddleware(authService))
+	tokenGroup.GET("/refresh", authController.RefreshToken) // Обновление токена
+	tokenGroup.DELETE("/:id", authController.RevokeToken)   // Отзыв токена
+
+	// Обработчик для корневого URL
+	e.GET("/", func(c echo.Context) error {
+		return c.String(http.StatusOK, "Hello, World!")
+	})
+
+	// Статические файлы
+	e.Static("/", filepath.Join(absFrontendPath, "public"))
+
+	// Обработчик для всех маршрутов, которые не являются API-запросами
+	e.GET("/*", func(c echo.Context) error {
+		sugar.Infof("Handling route: %s", c.Request().URL.Path)
+		return c.File(filepath.Join(absFrontendPath, "index.html"))
+	})
+}
+
+=============================================================
+=============================================================
+Имя Файла: auth_controller.go
+Путь: controllers/auth_controller.go
+Содержимое:
+package controllers
+
+import (
+	"github.com/go-playground/validator/v10"
+	"github.com/labstack/echo/v4"
+	"go.uber.org/zap"
+	"net/http"
+	"webcms/models"
+	s "webcms/services"
+)
+
+type AuthController struct {
+	AuthService s.AuthService
+	Logger      *zap.SugaredLogger
+}
+
+func NewAuthController(authService s.AuthService, logger *zap.SugaredLogger) *AuthController {
+	return &AuthController{AuthService: authService, Logger: logger}
+}
+
+func (controller *AuthController) Register(c echo.Context) error {
+	user := new(models.User)
+	if err := c.Bind(user); err != nil {
+		controller.Logger.Errorf("Failed to parse request: %v", err)
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Failed to parse request"})
+	}
+
+	validate := validator.New()
+	if err := validate.Struct(user); err != nil {
+		controller.Logger.Errorf("Validation error: %v", err)
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Validation error"})
+	}
+
+	err := controller.AuthService.Register(*user)
+	if err != nil {
+		controller.Logger.Errorf("Error registering user: %v", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Internal server error"})
+	}
+
+	controller.Logger.Info("User successfully registered")
+	return c.JSON(http.StatusOK, "User successfully registered")
+}
+
+func (controller *AuthController) Login(c echo.Context) error {
+	var input struct {
+		Email    string `json:"email" validate:"required,email"`
+		Password string `json:"password" validate:"required"`
+	}
+
+	if err := c.Bind(&input); err != nil {
+		return c.JSON(http.StatusBadRequest, err)
+	}
+
+	validate := validator.New()
+	if err := validate.Struct(&input); err != nil {
+		return c.JSON(http.StatusBadRequest, err.Error())
+	}
+
+	user, err := controller.AuthService.Login(input.Email, input.Password)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid email or password"})
+	}
+
+	token, err := controller.AuthService.GenerateJWT(user)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"user":  user,
+		"token": token,
+	})
+}
+
+func (controller *AuthController) RefreshToken(c echo.Context) error {
+	currentToken := c.Request().Header.Get("Authorization")
+	if currentToken == "" {
+		return c.JSON(http.StatusUnauthorized, "No token provided")
+	}
+
+	newToken, err := controller.AuthService.RefreshToken(currentToken)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, err.Error())
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"token": newToken})
+}
+
+func (controller *AuthController) RevokeToken(c echo.Context) error {
+	tokenID := c.Param("id")
+	err := controller.AuthService.RevokeToken(tokenID)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, err.Error())
+	}
+
+	return c.NoContent(http.StatusOK)
+}
+
+=============================================================
+=============================================================
+Имя Файла: user_controller.go
+Путь: controllers/user_controller.go
+Содержимое:
+package controllers
+
+import (
+	"github.com/go-playground/validator/v10"
+	"github.com/labstack/echo/v4"
+	"go.uber.org/zap"
+	"net/http"
+	"strconv"
+	"webcms/models"
+	"webcms/services"
+)
+
+type UserController struct {
+	UserService services.UserService
+	AuthService services.AuthService
+	Logger      *zap.SugaredLogger
+}
+
+func NewUserController(userService services.UserService, authService services.AuthService, logger *zap.SugaredLogger) *UserController {
+	return &UserController{UserService: userService, AuthService: authService, Logger: logger}
+}
+
+func (controller *UserController) CreateUser(c echo.Context) error {
+	user := new(models.User)
+	if err := c.Bind(user); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	validate := validator.New()
+	if err := validate.Struct(user); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	err := controller.UserService.CreateUser(*user)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, "Пользователь успешно создан")
+}
+
+func (controller *UserController) GetUserByID(c echo.Context) error {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	user, err := controller.UserService.GetUserByID(uint(id))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, user)
+}
+
+func (controller *UserController) UpdateUser(c echo.Context) error {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	user := new(models.User)
+	if err := c.Bind(user); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	user.ID = uint(id)
+
+	validate := validator.New()
+	if err := validate.Struct(user); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	err = controller.UserService.UpdateUser(*user)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, "Пользователь успешно обновлен")
+}
+
+func (controller *UserController) DeleteUser(c echo.Context) error {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	err = controller.UserService.DeleteUser(uint(id))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, "Пользователь успешно удален")
+}
+
+func (controller *UserController) GetAllUsers(c echo.Context) error {
+	controller.Logger.Info("GetAllUsers method called")
+	users, err := controller.UserService.GetAllUsers()
+	if err != nil {
+		controller.Logger.Errorf("Error fetching users: %v", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	controller.Logger.Infof("Users fetched successfully: %d users", len(users))
+	return c.JSON(http.StatusOK, users)
+}
+
+=============================================================
+=============================================================
+Имя Файла: jwt_middleware.go
+Путь: middlewares/jwt_middleware.go
+Содержимое:
+package middlewares
+
+import (
+	"fmt"
+	"net/http"
+	"os"
+	"strings"
+	"webcms/services"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/labstack/echo-jwt/v4"
+	"github.com/labstack/echo/v4"
+)
+
+func JWTMiddleware(authService services.AuthService) echo.MiddlewareFunc {
+	config := echojwt.Config{
+		SigningKey: []byte(os.Getenv("JWT_SECRET")),
+		ContextKey: "user",
+		NewClaimsFunc: func(c echo.Context) jwt.Claims {
+			return &jwt.RegisteredClaims{}
+		},
+		ErrorHandler: func(c echo.Context, err error) error {
+			fmt.Printf("JWT Error: %v\n", err) // Добавлено для отладки
+			if strings.Contains(err.Error(), "token is expired") {
+				return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Token has expired"})
+			}
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid token"})
+		},
+	}
+	return echojwt.WithConfig(config)
+}
+
+=============================================================
+=============================================================
+Имя Файла: token.go
+Путь: models/token.go
+Содержимое:
+package models
+
+import "time"
+
+type Token struct {
+	ID        uint   `gorm:"primary_key"`
+	UserID    uint   `gorm:"index"`
+	Token     string `gorm:"type:text"`
+	ExpiresAt time.Time
+	CreatedAt time.Time
+}
+
+=============================================================
+=============================================================
+Имя Файла: user.go
+Путь: models/user.go
+Содержимое:
+package models
+
+import "time"
+
+type User struct {
+	ID        uint   `gorm:"primary_key"`
+	Username  string `json:"username" validate:"required,min=3" gorm:"unique;not null"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Email     string `json:"email" validate:"required,email" gorm:"unique;not null"`
+	Password  string `json:"password" validate:"required,min=6"`
+	Role      string `json:"role" validate:"required,oneof=admin user"`
+	Name      string `gorm:"type:varchar(100);not null"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+=============================================================
+=============================================================
+Имя Файла: template_renderer.go
+Путь: rendering/template_renderer.go
+Содержимое:
+package rendering
+
+import (
+	"html/template"
+	"io"
+	"net/http"
+	"path/filepath"
+
+	"github.com/labstack/echo/v4"
+)
+
+// TemplateRenderer обеспечивает рендеринг HTML шаблонов
+type TemplateRenderer struct {
+	Templates *template.Template
+}
+
+// NewTemplateRenderer создает новый экземпляр TemplateRenderer
+func NewTemplateRenderer(templateDir string) *TemplateRenderer {
+	renderer := &TemplateRenderer{
+		Templates: template.Must(template.ParseGlob(filepath.Join(templateDir, "*.html"))),
+	}
+	return renderer
+}
+
+// Render реализует метод интерфейса echo.Renderer
+func (t *TemplateRenderer) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
+	// Пытаемся найти шаблон по имени
+	tmpl := t.Templates.Lookup(name)
+	if tmpl == nil {
+		// Если не нашли шаблон, возвращаем ошибку
+		return echo.NewHTTPError(http.StatusInternalServerError, "шаблон не найден")
+	}
+
+	// Если нашли, рендерим его с переданными данными
+	return tmpl.ExecuteTemplate(w, "base.html", data)
+}
+
+// SetupRenderer настраивает рендеринг шаблонов для Echo
+func SetupRenderer(e *echo.Echo) {
+	renderer := &TemplateRenderer{
+		Templates: template.Must(template.ParseGlob(filepath.Join("templates", "*.html"))),
+	}
+	e.Renderer = renderer
+}
+
+=============================================================
+=============================================================
+Имя Файла: token_repository.go
+Путь: repositories/token_repository.go
+Содержимое:
+package repositories
+
+import (
+	"time"
+	"webcms/models"
+
+	"gorm.io/gorm"
+)
+
+type TokenRepository interface {
+	SaveToken(token models.Token) error
+	SaveTokenWithTx(token models.Token, tx *gorm.DB) error
+	GetToken(tokenString string) (*models.Token, error)
+	DeleteToken(tokenString string) error
+	DeleteExpiredTokens() error
+}
+
+type tokenRepository struct {
+	db *gorm.DB
+}
+
+func NewTokenRepository(db *gorm.DB) TokenRepository {
+	return &tokenRepository{db: db}
+}
+
+func (r *tokenRepository) SaveToken(token models.Token) error {
+	return r.db.Create(&token).Error
+}
+
+func (r *tokenRepository) SaveTokenWithTx(token models.Token, tx *gorm.DB) error {
+	return tx.Create(&token).Error
+}
+
+func (r *tokenRepository) GetToken(tokenString string) (*models.Token, error) {
+	var token models.Token
+	err := r.db.Where("token = ?", tokenString).First(&token).Error
+	if err != nil {
+		return nil, err
+	}
+	return &token, nil
+}
+
+func (r *tokenRepository) DeleteToken(tokenString string) error {
+	return r.db.Where("token = ?", tokenString).Delete(&models.Token{}).Error
+}
+
+func (r *tokenRepository) DeleteExpiredTokens() error {
+	return r.db.Where("expires_at < ?", time.Now()).Delete(&models.Token{}).Error
+}
+
+=============================================================
+=============================================================
+Имя Файла: user_repository.go
+Путь: repositories/user_repository.go
+Содержимое:
+package repositories
+
+import (
+	"errors"
+	"gorm.io/gorm"
+	"webcms/models"
+)
+
+type UserRepository interface {
+	CreateUser(user models.User) error
+	CreateUserWithTx(user models.User, tx *gorm.DB) error
+	GetUserByID(id uint) (models.User, error)
+	GetUserByEmail(email string) (models.User, error)
+	UpdateUser(user models.User) error
+	UpdateUserWithTx(user models.User, tx *gorm.DB) error
+	DeleteUser(id uint) error
+	DeleteUserWithTx(id uint, tx *gorm.DB) error
+	GetAllUsers() ([]models.User, error)
+	Count() (int, error)
+	FindByUsername(username string) (*models.User, error)
+}
+
+type userRepository struct {
+	db *gorm.DB
+}
+
+func NewUserRepository(db *gorm.DB) UserRepository {
+	return &userRepository{db}
+}
+
+func (r *userRepository) CreateUser(user models.User) error {
+	var existingUser models.User
+	if err := r.db.Where("username = ? OR email = ?", user.Username, user.Email).First(&existingUser).Error; err == nil {
+		return errors.New("user with the same username or email already exists")
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	return r.db.Create(&user).Error
+}
+
+func (r *userRepository) CreateUserWithTx(user models.User, tx *gorm.DB) error {
+	var existingUser models.User
+	if err := tx.Where("username = ? OR email = ?", user.Username, user.Email).First(&existingUser).Error; err == nil {
+		return errors.New("user with the same username or email already exists")
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	return tx.Create(&user).Error
+}
+
+func (r *userRepository) GetUserByID(id uint) (models.User, error) {
+	var user models.User
+	err := r.db.Where("id = ?", id).First(&user).Error
+	return user, err
+}
+
+func (r *userRepository) GetUserByEmail(email string) (models.User, error) {
+	var user models.User
+	err := r.db.Where("email = ?", email).First(&user).Error
+	return user, err
+}
+
+func (r *userRepository) UpdateUser(user models.User) error {
+	return r.db.Save(&user).Error
+}
+
+func (r *userRepository) UpdateUserWithTx(user models.User, tx *gorm.DB) error {
+	return tx.Save(&user).Error
+}
+
+func (r *userRepository) DeleteUser(id uint) error {
+	return r.db.Where("id = ?", id).Delete(&models.User{}).Error
+}
+
+func (r *userRepository) DeleteUserWithTx(id uint, tx *gorm.DB) error {
+	return tx.Where("id = ?", id).Delete(&models.User{}).Error
+}
+
+func (r *userRepository) GetAllUsers() ([]models.User, error) {
+	var users []models.User
+	err := r.db.Find(&users).Error
+	return users, err
+}
+
+func (r *userRepository) Count() (int, error) {
+	var count int64
+	if err := r.db.Model(&models.User{}).Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return int(count), nil
+}
+
+func (r *userRepository) FindByUsername(username string) (*models.User, error) {
+	var user models.User
+	err := r.db.Where("username = ?", username).First(&user).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
+=============================================================
+=============================================================
+Имя Файла: auth_service.go
+Путь: services/auth_service.go
+Содержимое:
+package services
+
+import (
+	"errors"
+	"os"
+	"strconv"
+	"time"
+	"webcms/models"
+	"webcms/repositories"
+
+	"github.com/golang-jwt/jwt/v5"
+	"go.uber.org/zap"
+	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
+)
+
+type AuthService interface {
+	Register(user models.User) error
+	RegisterWithTx(user models.User, tx *gorm.DB) error
+	Login(email, password string) (*models.User, error)
+	GenerateJWT(user *models.User) (string, error)
+	GenerateJWTWithTx(user *models.User, tx *gorm.DB) (string, error)
+	RefreshToken(tokenString string) (string, error)
+	RevokeToken(tokenID string) error
+}
+
+type authService struct {
+	userRepo  repositories.UserRepository
+	tokenRepo repositories.TokenRepository
+	db        *gorm.DB
+	logger    *zap.SugaredLogger
+}
+
+func NewAuthService(userRepo repositories.UserRepository, tokenRepo repositories.TokenRepository, db *gorm.DB, logger *zap.SugaredLogger) AuthService {
+	return &authService{userRepo: userRepo, tokenRepo: tokenRepo, db: db, logger: logger}
+}
+
+func (s *authService) Register(user models.User) error {
+	tx := s.db.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	err := s.RegisterWithTx(user, tx)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	tx.Commit()
+	return nil
+}
+
+func (s *authService) RegisterWithTx(user models.User, tx *gorm.DB) error {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	if err != nil {
+		s.logger.Errorf("Error hashing password: %v", err)
+		return err
+	}
+	user.Password = string(hashedPassword)
+
+	// Сохранение пользователя в базе данных
+	if err := tx.Create(&user).Error; err != nil {
+		s.logger.Errorf("Error creating user: %v", err)
+		return err
+	}
+
+	s.logger.Infof("User registered successfully: %+v", user)
+	return nil
+}
+
+func (s *authService) Login(email, password string) (*models.User, error) {
+	user, err := s.userRepo.GetUserByEmail(email)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, errors.New("invalid credentials")
+	} else if err != nil {
+		return nil, err
+	}
+	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
+	if err != nil {
+		return nil, errors.New("invalid credentials")
+	}
+	return &user, nil
+}
+
+func (s *authService) GenerateJWT(user *models.User) (string, error) {
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		return "", errors.New("JWT secret not configured")
+	}
+
+	expirationTime := time.Now().Add(24 * time.Hour)
+	claims := &jwt.RegisteredClaims{
+		ExpiresAt: jwt.NewNumericDate(expirationTime),
+		Subject:   strconv.Itoa(int(user.ID)),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString([]byte(jwtSecret))
+	if err != nil {
+		return "", err
+	}
+
+	return tokenString, nil
+}
+
+func (s *authService) GenerateJWTWithTx(user *models.User, tx *gorm.DB) (string, error) {
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		return "", errors.New("JWT secret not configured")
+	}
+
+	expirationTime := time.Now().Add(24 * time.Hour)
+	claims := &jwt.RegisteredClaims{
+		ExpiresAt: jwt.NewNumericDate(expirationTime),
+		Subject:   strconv.Itoa(int(user.ID)),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString([]byte(jwtSecret))
+	if err != nil {
+		return "", err
+	}
+
+	err = s.tokenRepo.SaveTokenWithTx(models.Token{
+		UserID:    user.ID,
+		Token:     tokenString,
+		ExpiresAt: expirationTime,
+	}, tx)
+	if err != nil {
+		return "", err
+	}
+
+	return tokenString, nil
+}
+
+func (s *authService) RefreshToken(tokenString string) (string, error) {
+	token, err := s.tokenRepo.GetToken(tokenString)
+	if err != nil || token.ExpiresAt.Before(time.Now()) {
+		return "", errors.New("invalid or expired token")
+	}
+
+	user, err := s.userRepo.GetUserByID(token.UserID)
+	if err != nil {
+		return "", err
+	}
+
+	return s.GenerateJWT(&user)
+}
+
+func (s *authService) RevokeToken(tokenID string) error {
+	return s.tokenRepo.DeleteToken(tokenID)
+}
+
+=============================================================
+=============================================================
+Имя Файла: user_service.go
+Путь: services/user_service.go
+Содержимое:
+package services
+
+import (
+	"errors"
+	"webcms/models"
+	"webcms/repositories"
+
+	"gorm.io/gorm"
+)
+
+type UserService interface {
+	GetUserByID(id uint) (models.User, error)
+	GetUserByEmail(email string) (models.User, error)
+	UpdateUser(user models.User) error
+	DeleteUser(id uint) error
+	GetAllUsers() ([]models.User, error)
+	CreateUser(user models.User) error
+}
+
+type userService struct {
+	userRepository repositories.UserRepository
+	db             *gorm.DB
+}
+
+func NewUserService(userRepo repositories.UserRepository, db *gorm.DB) UserService {
+	return &userService{userRepo, db}
+}
+
+func (s *userService) GetUserByID(id uint) (models.User, error) {
+	return s.userRepository.GetUserByID(id)
+}
+
+func (s *userService) GetUserByEmail(email string) (models.User, error) {
+	return s.userRepository.GetUserByEmail(email)
+}
+
+func (s *userService) UpdateUser(user models.User) error {
+	return execWithTx(s.db, func(tx *gorm.DB) error {
+		return s.userRepository.UpdateUserWithTx(user, tx)
+	})
+}
+
+func (s *userService) DeleteUser(id uint) error {
+	return execWithTx(s.db, func(tx *gorm.DB) error {
+		return s.userRepository.DeleteUserWithTx(id, tx)
+	})
+}
+
+func (s *userService) GetAllUsers() ([]models.User, error) {
+	return s.userRepository.GetAllUsers()
+}
+
+func (s *userService) CreateUser(user models.User) error {
+	// Проверка на дублирование
+	existingUser, err := s.userRepository.FindByUsername(user.Username)
+	if err != nil {
+		return err
+	}
+	if existingUser != nil {
+		return errors.New("username already exists")
+	}
+
+	existingUserByEmail, err := s.userRepository.GetUserByEmail(user.Email)
+	if err != nil {
+		return err
+	}
+	if existingUserByEmail.ID != 0 { // Проверяем, что email уже существует
+		return errors.New("email already exists")
+	}
+
+	return execWithTx(s.db, func(tx *gorm.DB) error {
+		return s.userRepository.CreateUserWithTx(user, tx)
+	})
+}
+
+=============================================================
+=============================================================
+Имя Файла: transaction_helper.go
+Путь: services/transaction_helper.go
+Содержимое:
+package services
+
+import "gorm.io/gorm"
+
+func execWithTx(db *gorm.DB, fn func(*gorm.DB) error) error {
+	tx := db.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	if err := fn(tx); err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit().Error
+}
+
+=============================================================
+=============================================================
+Имя Файла: DeleteUser.vue
+Путь: webcms-vue/src/components/DeleteUser.vue
+Содержимое:
+<template>
+  <div>
+    <h1>Удалить пользователя</h1>
+    <p>Вы уверены, что хотите удалить пользователя <strong>{{ user.name }}</strong>?</p>
+    <b-button @click="deleteUser" variant="danger">Удалить</b-button>
+    <b-button to="/users" variant="secondary">Отмена</b-button>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted } from 'vue'
+import axios from 'axios'
+import { useRoute, useRouter } from 'vue-router'
+
+const user = ref(null)
+const route = useRoute()
+const router = useRouter()
+
+onMounted(async () => {
+  try {
+    const response = await axios.get(`/api/users/${route.params.id}`)
+    user.value = response.data
+  } catch (error) {
+    console.error('Не удалось получить данные пользователя:', error)
+  }
+})
+
+const deleteUser = async () => {
+  try {
+    await axios.delete(`/api/users/${route.params.id}`)
+    await router.push('/users')
+  } catch (error) {
+    console.error('Не удалось удалить пользователя:', error)
+  }
+}
+</script>
+
+=============================================================
+=============================================================
+Имя Файла: main.js
+Путь: webcms-vue/src/main.js
+Содержимое:
+import { createApp } from 'vue';
+import App from './App.vue';
+import router from './router';
+import store from './store';
+import BootstrapVue3 from 'bootstrap-vue-3';
+
+// Import Bootstrap and BootstrapVue CSS files
+import 'bootstrap/dist/css/bootstrap.css';
+import 'bootstrap-vue-3/dist/bootstrap-vue-3.css';
+
+const app = createApp(App);
+
+app.use(router);
+app.use(store);
+app.use(BootstrapVue3);
+
+app.mount('#app');
+
+=============================================================
+=============================================================
+Имя Файла: index.js
+Путь: webcms-vue/src/router/index.js
+Содержимое:
+import { createRouter, createWebHistory } from 'vue-router';
+import Home from '../views/Home.vue';
+import Register from '../views/Register.vue';
+import UserList from '../components/UserList.vue';  // Убедитесь, что здесь правильный импорт
+import UserDetail from '../components/UserDetail.vue';
+import DeleteUser from '../components/DeleteUser.vue';
+
+
+const routes = [
+    {
+        path: '/',
+        name: 'Home',
+        component: Home
+    },
+    {
+        path: '/register',
+        name: 'Register',
+        component: Register
+    },
+    {
+        path: '/users',
+        name: 'UserList',  // Обратите внимание на правильное имя
+        component: UserList
+    },
+    {
+        path: '/users/:id',
+        name: 'UserDetail',
+        component: UserDetail,
+        props: true
+    },
+    {
+        path: '/delete-user/:id',
+        name: 'DeleteUser',
+        component: DeleteUser,
+        props: true
+    },
+];
+
+const router = createRouter({
+    history: createWebHistory(import.meta.env.BASE_URL), // Используйте import.meta.env.BASE_URL для Vite
+    routes
+});
+
+export default router;
+
+Путь: webcms-vue/src/store/index.js
+Содержимое:
+import {createStore} from 'vuex'
+
+export default createStore({
+    state: {
+        user: null, // начальное состояние для пользователя
+        settings: {}, // начальное состояние для настроек
+        items: [] // начальное состояние для списка элементов
+    },
+    mutations: {
+        setUser(state, user) {
+            state.user = user;
+        },
+        setSettings(state, settings) {
+            state.settings = settings;
+        },
+        addItem(state, item) {
+            state.items.push(item);
+        }
+    },
+    actions: {
+        fetchUser({commit}) {
+            // Имитация запроса к API
+            const user = {name: 'John Doe', email: 'john@example.com'};
+            commit('setUser', user);
+        },
+        fetchSettings({commit}) {
+            // Имитация запроса к API
+            const settings = {theme: 'dark'};
+            commit('setSettings', settings);
+        },
+        async fetchItems({commit}) {
+            // Имитация асинхронного запроса к API
+            const items = await new Promise(resolve => {
+                setTimeout(() => {
+                    resolve([{name: 'Item 1'}, {name: 'Item 2'}]);
+                }, 1000);
+            });
+            items.forEach(item => {
+                commit('addItem', item);
+            });
+        }
+    },
+    modules: {
+        // Здесь можно определить модули, если они у вас есть
+    }
+})
+=============================================================
+=============================================================
+Имя Файла: vite.config.js
+Путь: webcms-vue/vite.config.js
+Содержимое:
+import { defineConfig } from 'vite';
+import vue from '@vitejs/plugin-vue';
+import path from 'path';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const proxyTarget = process.env.PROXY_TARGET || 'http://localhost:8080';
+
+export default defineConfig({
+    plugins: [vue()],
+    build: {
+        outDir: 'dist',
+    },
+    resolve: {
+        alias: {
+            '@': path.resolve(__dirname, 'src'),
+        },
+    },
+    server: {
+        proxy: {
+            '/api': {
+                target: proxyTarget,
+                changeOrigin: true,
+                secure: false,
+                rewrite: path => path.replace(/^\/api/, ''),
+                logLevel: 'debug',
+                configure: (proxy, options) => {
+                    proxy.on('proxyReq', (proxyReq, req, res) => {
+                        console.log('Proxying request:', req.url);
+                    });
+                    proxy.on('proxyRes', (proxyRes, req, res) => {
+                        console.log('Received response from target:', proxyRes.statusCode, req.url);
+                    });
+                    proxy.on('error', (err, req, res) => {
+                        console.error('Proxy error:', err, req.url);
+                    });
+                }
+            },
+        },
+    },
+});
+
+=============================================================
+=============================================================
+Имя Файла: docker-compose.yml
+Путь: docker-compose.yml
+Содержимое:
+services:
+  db:
+    image: postgres:16
+    container_name: webcms-db
+    env_file:
+      - .env
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - webcms-network
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}" ]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+
+  flyway:
+    image: flyway/flyway
+    container_name: flyway-migrations
+    command: -url=jdbc:postgresql://db:5432/${DB_NAME} -user=${DB_USER} -password=${DB_PASSWORD} -locations=filesystem:/flyway/sql migrate
+    environment:
+      - FLYWAY_SCHEMAS=public
+    volumes:
+      - ./db/migrations:/flyway/sql
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - webcms-network
+
+  web:
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+    container_name: webcms-app
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      flyway:
+        condition: service_completed_successfully
+    networks:
+      - webcms-network
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:8080/api/health || exit 1" ]
+      interval: 20s
+      timeout: 10s
+      retries: 1
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend.Dockerfile
+    container_name: webcms-frontend
+    ports:
+      - "80:80"
+    networks:
+      - webcms-network
+    depends_on:
+      web:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+
+networks:
+  webcms-network:
+    driver: bridge
+
+=============================================================
+=============================================================
+Имя Файла: frontend.Dockerfile
+Путь: frontend.Dockerfile
+Содержимое:
+# Этап 1: Сборка фронтенда
+FROM node:18-alpine AS frontend-builder
+
+# Создание рабочей директории
+WORKDIR /frontend
+
+# Копирование файлов проекта и установка зависимостей
+COPY webcms-vue/package.json webcms-vue/package-lock.json ./
+RUN ls -la && npm install
+
+# Копирование остального кода фронтенда в рабочую директорию
+COPY webcms-vue ./
+RUN ls -la
+
+# Сборка фронтенд-приложения и сохранение логов
+RUN npm run build > /frontend/build.log 2>&1 || (cat /frontend/build.log && exit 1)
+
+# Этап 2: Запуск сервера для статики
+FROM node:18-alpine
+
+# Установка http-server для обслуживания статических файлов
+RUN npm install -g http-server
+
+# Установка curl
+RUN apk add --no-cache curl
+
+# Создание рабочей директории
+WORKDIR /frontend
+
+# Копирование собранных файлов из предыдущего этапа
+COPY --from=frontend-builder /frontend/dist /frontend/dist
+COPY --from=frontend-builder /frontend/build.log /frontend/build.log
+
+# Копирование .htaccess файла
+COPY webcms-vue/.htaccess /frontend/dist/.htaccess
+
+# Определение порта для сервера
+EXPOSE 80
+
+# Запуск http-server для обслуживания файлов из директории dist
+CMD ["http-server", "dist", "-p", "80"]
+
+=============================================================
+=============================================================
+Имя Файла: backend.Dockerfile
+Путь: backend.Dockerfile
+Содержимое:
+# Этап 1: Сборка приложения
+FROM golang:1.22-alpine3.18 AS builder
+
+# Установка необходимых утилит
+RUN apk update && apk add --no-cache git
+
+# Создание рабочей директории
+WORKDIR /app
+
+# Копирование файлов проекта и загрузка зависимостей
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Копирование остального кода приложения в рабочую директорию
+COPY . .
+
+# Компиляция приложения
+RUN go build -o /app/main ./cmd/main.go
+
+# Этап 2: Запуск приложения
+FROM alpine:3.18
+
+# Установка необходимых утилит
+RUN apk update && apk add --no-cache libgcc libc6-compat curl tar bash
+
+# Создание рабочей директории
+WORKDIR /app
+
+# Копирование скомпилированного приложения из предыдущего этапа
+COPY --from=builder /app/main /app/main
+
+# Установка прав на выполнение файла main
+RUN chmod +x /app/main
+
+# Копирование статических файлов и конфигураций, если они существуют
+COPY --from=builder /app/templates /app/templates
+COPY --from=builder /app/.env /app/.env
+
+# Определение переменных окружения
+ENV DATABASE_URL=${DATABASE_URL}
+ENV FRONTEND_PATH=${FRONTEND_PATH}
+ENV JWT_SECRET=${JWT_SECRET}
+
+# Открываем порт приложения
+EXPOSE 8080
+
+# Запуск приложения
+CMD ["/app/main"]
+
+=============================================================
+=============================================================
+Имя Файла: .env
+Путь: .env
+Содержимое:
+# Настройки подключения к базе данных PostgreSQL
+DB_HOST=db
+DB_PORT=5432
+DB_USER=userpp
+DB_PASSWORD=adminpp
+DB_NAME=ppdb
+
+# Строка подключения к базе данных PostgreSQL с SSL
+DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=disable
+
+# Путь для фронтенд-приложения
+FRONTEND_PATH=http://localhost
+
+# Секрет для JWT
+JWT_SECRET=XzW0nlpHkkSOebfhnkngYgE6vKjvZ90X5NJhw5g7WEg=
+
+PROXY_TARGET=http://pp-app:8080
+
+=============================================================
+=============================================================
+Имя Файла: V1__create_tables.sql
+Путь: db/migrations/V1__create_tables.sql
+Содержимое:
+CREATE TABLE users
+(
+    id         SERIAL PRIMARY KEY,
+    username   VARCHAR(255) NOT NULL UNIQUE,
+    first_name VARCHAR(255),
+    last_name  VARCHAR(255),
+    email      VARCHAR(255) NOT NULL UNIQUE,
+    password   VARCHAR(255) NOT NULL,
+    role       VARCHAR(50)  NOT NULL,
+    name       VARCHAR(100) NOT NULL,
+    created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+
+вывод:
+
+$ docker-compose logs
+flyway-migrations  | Flyway OSS Edition 10.17.0 by Redgate
+flyway-migrations  |
+flyway-migrations  | See release notes here: https://rd.gt/416ObMi
+flyway-migrations  | Database: jdbc:postgresql://db:5432/ppdb (PostgreSQL 16.3)
+flyway-migrations  | Successfully validated 1 migration (execution time 00:00.056s)
+flyway-migrations  | Current version of schema "public": 1
+webcms-db          |
+webcms-db          | PostgreSQL Database directory appears to contain a database; Skipping initialization
+webcms-db          |
+webcms-db          | 2024-08-01 17:03:44.221 UTC [1] LOG:  starting PostgreSQL 16.3 (Debian 16.3-1.pgdg120+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 12.2.0-14) 12.2.0, 64-bit
+webcms-db          | 2024-08-01 17:03:44.222 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+webcms-db          | 2024-08-01 17:03:44.222 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+webcms-db          | 2024-08-01 17:03:44.228 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+webcms-db          | 2024-08-01 17:03:44.238 UTC [29] LOG:  database system was shut down at 2024-08-01 17:03:14 UTC
+webcms-db          | 2024-08-01 17:03:44.249 UTC [1] LOG:  database system is ready to accept connections
+webcms-db          | 2024-08-01 17:04:08.707 UTC [44] FATAL:  password authentication failed for user "postgres"
+webcms-db          | 2024-08-01 17:04:08.707 UTC [44] DETAIL:  Role "postgres" does not exist.
+webcms-db          |    Connection matched file "/var/lib/postgresql/data/pg_hba.conf" line 128: "host all all all scram-sha-256"
+flyway-migrations  | Schema "public" is up to date. No migration necessary.
+webcms-frontend    | Starting up http-server, serving dist
+webcms-app         | {"level":"info","ts":1722531848.6965728,"caller":"config/env.go:12","msg":".env file loaded successfully"}
+webcms-app         | {"level":"info","ts":1722531848.707844,"caller":"config/database.go:33","msg":"Connecting to database: postgres://userpp:adminpp@db:5432/ppdb?sslmode=disable"}
+webcms-app         | {"level":"info","ts":1722531848.732823,"caller":"config/database.go:123","msg":"Starting database migration..."}
+webcms-app         | {"level":"info","ts":1722531848.905326,"caller":"config/database.go:128","msg":"Database migration completed successfully"}
+webcms-app         |
+webcms-app         |    ____    __
+webcms-app         |   / __/___/ /  ___
+webcms-app         |  / _// __/ _ \/ _ \
+webcms-app         | {"level":"info","ts":1722531848.9057963,"caller":"config/cleanup.go:11","msg":"Starting token cleanup process"}
+webcms-app         | /___/\__/_//_/\___/ v4.12.0
+webcms-app         | High performance, minimalist Go web framework
+webcms-app         | https://echo.labstack.com
+webcms-app         | ____________________________________O/_______
+webcms-app         |                                     O\
+webcms-app         | ⇨ http server started on [::]:8080
+webcms-app         | {"level":"info","ts":1722531848.9073734,"caller":"config/cleanup.go:16","msg":"Expired tokens deleted successfully"}
+webcms-app         | {"level":"info","ts":1722531868.7509334,"caller":"config/echo.go:16","msg":"Request received: GET /api/health"}
+webcms-app         | {"time":"2024-08-01T17:04:28.75103509Z","id":"","remote_ip":"::1","host":"localhost:8080","method":"GET","uri":"/api/health","user_agent":"curl/8.9.0","status":200,"error":"","latency":34803,"latency_human":"34.803µs","bytes_in":0,"b
+ytes_out":17}
+webcms-app         | {"level":"info","ts":1722531888.7959213,"caller":"config/echo.go:16","msg":"Request received: GET /api/health"}
+webcms-app         | {"time":"2024-08-01T17:04:48.796069345Z","id":"","remote_ip":"::1","host":"localhost:8080","method":"GET","uri":"/api/health","user_agent":"curl/8.9.0","status":200,"error":"","latency":20901,"latency_human":"20.901µs","bytes_in":0,"
+bytes_out":17}
+webcms-app         | {"time":"2024-08-01T17:05:08.832776258Z","id":"","remote_ip":"::1","host":"localhost:8080","method":"GET","uri":"/api/health","user_agent":"curl/8.9.0","status":200,"error":"","latency":18901,"latency_human":"18.901µs","bytes_in":0,"
+bytes_out":17}
+webcms-app         | {"level":"info","ts":1722531908.8326874,"caller":"config/echo.go:16","msg":"Request received: GET /api/health"}
+webcms-frontend    |
+webcms-frontend    | http-server version: 14.1.1
+webcms-frontend    |
+webcms-frontend    | http-server settings:
+webcms-frontend    | CORS: disabled
+webcms-frontend    | Cache: 3600 seconds
+webcms-frontend    | Connection Timeout: 120 seconds
+webcms-frontend    | Directory Listings: visible
+webcms-frontend    | AutoIndex: visible
+webcms-frontend    | Serve GZIP Files: false
+webcms-frontend    | Serve Brotli Files: false
+webcms-frontend    | Default File Extension: none
+webcms-frontend    |
+webcms-frontend    | Available on:
+webcms-frontend    |   http://127.0.0.1:80
+webcms-frontend    |   http://172.25.0.4:80
+webcms-frontend    | Hit CTRL-C to stop the server
+webcms-frontend    |
+webcms-frontend    | [2024-08-01T17:04:35.208Z]  "GET /" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 YaBrowser/24.6.0.0 Safari/537.36"
+webcms-frontend    | (node:1) [DEP0066] DeprecationWarning: OutgoingMessage.prototype._headers is deprecated
+webcms-frontend    | (Use `node --trace-deprecation ...` to show where the warning was created)
+webcms-frontend    | [2024-08-01T17:04:35.851Z]  "GET /assets/index-hMdHNCYR.js" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 YaBrowser/24.6.0.0 Safari/537.36"
+webcms-frontend    | [2024-08-01T17:04:35.858Z]  "GET /assets/index-DJfL3EzD.css" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 YaBrowser/24.6.0.0 Safari/537.36"
+webcms-frontend    | [2024-08-01T17:04:36.195Z]  "GET /vite.svg" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 YaBrowser/24.6.0.0 Safari/537.36"
+webcms-frontend    | [2024-08-01T17:04:36.196Z]  "GET /api/health" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 YaBrowser/24.6.0.0 Safari/537.36"
+webcms-frontend    | [2024-08-01T17:04:36.204Z]  "GET /api/health" Error (404): "Not found"
+webcms-frontend    | [2024-08-01T17:04:56.205Z]  "POST /api/register" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0"
+webcms-frontend    | [2024-08-01T17:04:56.206Z]  "POST /api/register" Error (404): "Not found"
+

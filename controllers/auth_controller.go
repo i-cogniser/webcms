@@ -1,46 +1,44 @@
 package controllers
 
 import (
+	"github.com/go-playground/validator/v10"
+	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
 	"net/http"
 	"webcms/models"
-	"webcms/services"
-
-	"github.com/go-playground/validator/v10"
-	"github.com/labstack/echo/v4"
+	s "webcms/services"
 )
 
 type AuthController struct {
-	AuthService services.AuthService
+	AuthService s.AuthService
 	Logger      *zap.SugaredLogger
 }
 
-func NewAuthController(authService services.AuthService, Logger *zap.SugaredLogger) *AuthController {
-	return &AuthController{AuthService: authService, Logger: Logger}
+func NewAuthController(authService s.AuthService, logger *zap.SugaredLogger) *AuthController {
+	return &AuthController{AuthService: authService, Logger: logger}
 }
 
 func (controller *AuthController) Register(c echo.Context) error {
 	user := new(models.User)
 	if err := c.Bind(user); err != nil {
-		return c.JSON(http.StatusBadRequest, err)
+		controller.Logger.Errorf("Failed to parse request: %v", err)
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Failed to parse request"})
 	}
 
 	validate := validator.New()
 	if err := validate.Struct(user); err != nil {
-		return c.JSON(http.StatusBadRequest, err.Error())
-	}
-
-	// Убедитесь, что роль была указана
-	if user.Role == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Role is required"})
+		controller.Logger.Errorf("Validation error: %v", err)
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Validation error"})
 	}
 
 	err := controller.AuthService.Register(*user)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		controller.Logger.Errorf("Error registering user: %v", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Internal server error"})
 	}
 
-	return c.JSON(http.StatusOK, "User registered successfully")
+	controller.Logger.Info("User successfully registered")
+	return c.JSON(http.StatusOK, "User successfully registered")
 }
 
 func (controller *AuthController) Login(c echo.Context) error {
@@ -60,7 +58,7 @@ func (controller *AuthController) Login(c echo.Context) error {
 
 	user, err := controller.AuthService.Login(input.Email, input.Password)
 	if err != nil {
-		return c.JSON(http.StatusUnauthorized, err.Error())
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid email or password"})
 	}
 
 	token, err := controller.AuthService.GenerateJWT(user)

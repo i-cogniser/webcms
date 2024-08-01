@@ -4,6 +4,7 @@ import (
 	"html/template"
 	"io"
 	"net/http"
+	"path/filepath"
 
 	"github.com/labstack/echo/v4"
 )
@@ -16,7 +17,7 @@ type TemplateRenderer struct {
 // NewTemplateRenderer создает новый экземпляр TemplateRenderer
 func NewTemplateRenderer(templateDir string) *TemplateRenderer {
 	renderer := &TemplateRenderer{
-		Templates: template.Must(template.ParseGlob(templateDir + "/*.html")),
+		Templates: template.Must(template.ParseGlob(filepath.Join(templateDir, "*.html"))),
 	}
 	return renderer
 }
@@ -32,4 +33,12 @@ func (t *TemplateRenderer) Render(w io.Writer, name string, data interface{}, c 
 
 	// Если нашли, рендерим его с переданными данными
 	return tmpl.ExecuteTemplate(w, "base.html", data)
+}
+
+// SetupRenderer настраивает рендеринг шаблонов для Echo
+func SetupRenderer(e *echo.Echo) {
+	renderer := &TemplateRenderer{
+		Templates: template.Must(template.ParseGlob(filepath.Join("templates", "*.html"))),
+	}
+	e.Renderer = renderer
 }

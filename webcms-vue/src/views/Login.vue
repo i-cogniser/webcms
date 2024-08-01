@@ -29,17 +29,16 @@ const router = useRouter()
 const handleLogin = async () => {
   try {
     const response = await axios.post('/api/login', {
-      username: username.value,
+      email: this.email.value,
       password: password.value
-    })
-    localStorage.setItem('jwtToken', response.data.token)
-    // Перенаправление на страницу пользователей
-    router.push('/users')
+    });
+    localStorage.setItem('jwtToken', response.data.token);
+    await router.push('/users');
   } catch (err) {
-    error.value = 'Failed to login: ' + err.message
-    console.error('Failed to login:', err)
+    error.value = 'Failed to login: ' + err.message;
+    console.error('Failed to login:', err);
   }
-}
+};
 </script>
 
 <style>

@@ -2,9 +2,8 @@ package repositories
 
 import (
 	"errors"
+	"gorm.io/gorm"
 	"webcms/models"
-
-	"github.com/jinzhu/gorm"
 )
 
 type UserRepository interface {
@@ -33,7 +32,7 @@ func (r *userRepository) CreateUser(user models.User) error {
 	var existingUser models.User
 	if err := r.db.Where("username = ? OR email = ?", user.Username, user.Email).First(&existingUser).Error; err == nil {
 		return errors.New("user with the same username or email already exists")
-	} else if !gorm.IsRecordNotFoundError(err) {
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
 	return r.db.Create(&user).Error
@@ -43,7 +42,7 @@ func (r *userRepository) CreateUserWithTx(user models.User, tx *gorm.DB) error {
 	var existingUser models.User
 	if err := tx.Where("username = ? OR email = ?", user.Username, user.Email).First(&existingUser).Error; err == nil {
 		return errors.New("user with the same username or email already exists")
-	} else if !gorm.IsRecordNotFoundError(err) {
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
 	return tx.Create(&user).Error
@@ -84,18 +83,18 @@ func (r *userRepository) GetAllUsers() ([]models.User, error) {
 }
 
 func (r *userRepository) Count() (int, error) {
-	var count int
+	var count int64
 	if err := r.db.Model(&models.User{}).Count(&count).Error; err != nil {
 		return 0, err
 	}
-	return count, nil
+	return int(count), nil
 }
 
 func (r *userRepository) FindByUsername(username string) (*models.User, error) {
 	var user models.User
 	err := r.db.Where("username = ?", username).First(&user).Error
 	if err != nil {
-		if gorm.IsRecordNotFoundError(err) {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 		return nil, err

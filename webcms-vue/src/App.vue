@@ -1,5 +1,11 @@
 <script setup>
-import { RouterView, RouterLink } from 'vue-router'
+import { RouterView, RouterLink } from 'vue-router';
+import axios from 'axios';
+
+// Проверка работы прокси и доступности бэкенда
+axios.get('/api/health')
+    .then(response => console.log('Health check response:', response.data))
+    .catch(error => console.error('Health check error:', error));
 </script>
 
 <template>
@@ -9,14 +15,9 @@ import { RouterView, RouterLink } from 'vue-router'
         <a href="https://vitejs.dev" target="_blank">
           <img src="/vite.svg" class="logo" alt="Vite logo"/>
         </a>
-        <a href="https://vuejs.org/" target="_blank">
-          <img src="./assets/vue.svg" class="logo vue" alt="Vue logo"/>
-        </a>
         <RouterLink to="/">Home</RouterLink>
         <RouterLink to="/register">Register</RouterLink>
         <RouterLink to="/users">Users</RouterLink>
-        <RouterLink to="/pages">Pages</RouterLink>
-        <RouterLink to="/posts">Posts</RouterLink>
       </nav>
     </header>
     <RouterView />
